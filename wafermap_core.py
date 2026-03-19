@@ -1,0 +1,225 @@
+from __future__ import annotations
+
+import io
+import math
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib.path import Path as MplPath
+from scipy.interpolate import griddata
+
+
+defaultDiameterMm = 150.0
+flatOptions = {
+    "47.5 mm": 47.5,
+    "57.5 mm": 57.5,
+    "notch": "notch",
+}
+notchWidthMm = 6.0
+notchDepthMm = 2.0
+
+
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    normalizedColumns = {col: col.strip().lower() for col in df.columns}
+    renamedDf = df.rename(columns=normalizedColumns)
+    required = {"sitex", "sitey", "thickness"}
+    missing = required - set(renamedDf.columns)
+    if missing:
+        missingText = ", ".join(sorted(missing))
+        raise ValueError(
+            f"Excel 缺少必要欄位: {missingText}。需要包含 siteX, siteY, thickness。"
+        )
+
+    return renamedDf[["sitex", "sitey", "thickness"]].rename(
+        columns={"sitex": "siteX", "sitey": "siteY"}
+    )
+
+
+def validate_parameters(
+    stepXUm: float,
+    stepYUm: float,
+    offsetXUm: float,
+    offsetYUm: float,
+    diameterMm: float,
+) -> None:
+    if stepXUm <= 0 or stepYUm <= 0:
+        raise ValueError("stepX 與 stepY 必須大於 0。")
+    if offsetXUm < 0 or offsetYUm < 0:
+        raise ValueError("offsetX 與 offsetY 必須大於或等於 0。")
+    if offsetXUm >= stepXUm or offsetYUm >= stepYUm:
+        raise ValueError("offsetX 必須小於 stepX，且 offsetY 必須小於 stepY。")
+    if diameterMm <= 0:
+        raise ValueError("wafer diameter 必須大於 0。")
+
+
+def build_wafer_outline(diameterMm: float, flatOption: str) -> np.ndarray:
+    radius = diameterMm / 2.0
+
+    if flatOption == "notch":
+        halfWidth = notchWidthMm / 2.0
+        yJoin = -math.sqrt(max(radius**2 - halfWidth**2, 0.0))
+        thetaLeft = math.atan2(yJoin, -halfWidth)
+        thetaRight = math.atan2(yJoin, halfWidth)
+        arcAngles = np.linspace(thetaLeft, thetaRight + 2.0 * math.pi, 720)
+        arc = np.column_stack((radius * np.cos(arcAngles), radius * np.sin(arcAngles)))
+        notch = np.array(
+            [
+                [halfWidth, yJoin],
+                [0.0, -radius + notchDepthMm],
+                [-halfWidth, yJoin],
+            ]
+        )
+        return np.vstack((arc, notch, arc[0]))
+
+    flatLength = flatOptions[flatOption]
+    halfFlat = float(flatLength) / 2.0
+    yFlat = -math.sqrt(max(radius**2 - halfFlat**2, 0.0))
+    thetaLeft = math.atan2(yFlat, -halfFlat)
+    thetaRight = math.atan2(yFlat, halfFlat)
+    arcAngles = np.linspace(thetaLeft, thetaRight + 2.0 * math.pi, 720)
+    arc = np.column_stack((radius * np.cos(arcAngles), radius * np.sin(arcAngles)))
+    flat = np.array([[halfFlat, yFlat], [-halfFlat, yFlat]])
+    return np.vstack((arc, flat, arc[0]))
+
+
+def calculate_positions(
+    df: pd.DataFrame,
+    stepXUm: float,
+    stepYUm: float,
+    offsetXUm: float,
+    offsetYUm: float,
+) -> pd.DataFrame:
+    result = df.copy()
+    result["posXUm"] = result["siteX"] * stepXUm + offsetXUm
+    result["posYUm"] = result["siteY"] * stepYUm + offsetYUm
+    result["posXMm"] = result["posXUm"] / 1000.0
+    result["posYMm"] = result["posYUm"] / 1000.0
+    return result
+
+
+def collapse_duplicate_points(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    duplicateCount = int(
+        df.duplicated(subset=["posXMm", "posYMm"], keep=False).sum()
+    )
+    groupedDf = (
+        df.groupby(["posXMm", "posYMm"], as_index=False)
+        .agg(
+            thickness=("thickness", "mean"),
+            posXUm=("posXUm", "first"),
+            posYUm=("posYUm", "first"),
+        )
+        .sort_values(["posYMm", "posXMm"])
+        .reset_index(drop=True)
+    )
+    return groupedDf, duplicateCount
+
+
+def count_points_outside_outline(pointsDf: pd.DataFrame, outline: np.ndarray) -> int:
+    outlinePath = MplPath(outline)
+    points = pointsDf[["posXMm", "posYMm"]].to_numpy(dtype=float)
+    inside = outlinePath.contains_points(points)
+    return int((~inside).sum())
+
+
+def build_interpolated_grid(
+    pointsDf: pd.DataFrame,
+    outline: np.ndarray,
+    gridSize: int = 320,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    points = pointsDf[["posXMm", "posYMm"]].to_numpy(dtype=float)
+    values = pointsDf["thickness"].to_numpy(dtype=float)
+    if len(points) < 3:
+        return None
+
+    centered = points - points.mean(axis=0, keepdims=True)
+    if np.linalg.matrix_rank(centered) < 2:
+        return None
+
+    xMin, yMin = outline.min(axis=0)
+    xMax, yMax = outline.max(axis=0)
+    gridX, gridY = np.meshgrid(
+        np.linspace(xMin, xMax, gridSize),
+        np.linspace(yMin, yMax, gridSize),
+    )
+
+    linearGrid = griddata(points, values, (gridX, gridY), method="linear")
+    nearestGrid = griddata(points, values, (gridX, gridY), method="nearest")
+    gridZ = np.where(np.isnan(linearGrid), nearestGrid, linearGrid)
+
+    outlinePath = MplPath(outline)
+    inside = outlinePath.contains_points(
+        np.column_stack((gridX.ravel(), gridY.ravel()))
+    ).reshape(gridX.shape)
+    gridZ = np.where(inside, gridZ, np.nan)
+    return gridX, gridY, gridZ
+
+
+def render_figure(
+    pointsDf: pd.DataFrame,
+    outline: np.ndarray,
+    title: str,
+    contourGrid: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+) -> plt.Figure:
+    radius = np.max(np.linalg.norm(outline, axis=1))
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=200)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("#f8fbff")
+
+    if contourGrid is not None:
+        gridX, gridY, gridZ = contourGrid
+        contour = ax.contourf(
+            gridX,
+            gridY,
+            gridZ,
+            levels=18,
+            cmap="viridis",
+            alpha=0.88,
+        )
+        colorbar = fig.colorbar(contour, ax=ax, fraction=0.046, pad=0.04)
+        colorbar.set_label("Thickness (A)")
+
+    scatter = ax.scatter(
+        pointsDf["posXMm"],
+        pointsDf["posYMm"],
+        c=pointsDf["thickness"],
+        cmap="viridis",
+        s=46,
+        edgecolors="black",
+        linewidths=0.6,
+        zorder=3,
+    )
+
+    if contourGrid is None:
+        colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
+        colorbar.set_label("Thickness (A)")
+
+    ax.plot(outline[:, 0], outline[:, 1], color="black", linewidth=2.0, zorder=4)
+
+    for row in pointsDf.itertuples():
+        ax.annotate(
+            f"{row.thickness:.1f}",
+            (row.posXMm, row.posYMm),
+            textcoords="offset points",
+            xytext=(5, 5),
+            fontsize=8,
+            color="#1a1a1a",
+            bbox={"boxstyle": "round,pad=0.18", "fc": "white", "ec": "none", "alpha": 0.7},
+        )
+
+    margin = max(radius * 0.06, 5.0)
+    ax.set_xlim(outline[:, 0].min() - margin, outline[:, 0].max() + margin)
+    ax.set_ylim(outline[:, 1].min() - margin, outline[:, 1].max() + margin)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("X (mm)")
+    ax.set_ylabel("Y (mm)")
+    ax.set_title(title)
+    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.35)
+    return fig
+
+
+def figure_to_jpg_bytes(fig: plt.Figure) -> bytes:
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="jpg", dpi=300, bbox_inches="tight", facecolor="white")
+    buffer.seek(0)
+    return buffer.getvalue()
