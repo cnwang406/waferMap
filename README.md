@@ -8,10 +8,12 @@ by cnwang, 2026/03
 ## Features
 
 - Upload an Excel file with `siteX`, `siteY`, and `thickness`
-- Input wafer map parameters: `stepX`, `stepY`, `offsetX`, `offsetY`, `wafer diameter`, `flat`
+- Input wafer map parameters: `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y`, `wafer diameter`, `flat`
 - Convert site coordinates into absolute wafer coordinates
 - Draw wafer outline with `47.5 mm`, `57.5 mm`, or `notch`
+- Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
 - Render contour map and measurement point labels
+- Toggle contour grid display (hidden by default, light gray when shown)
 - Export the chart as a `.jpg` using the same base filename as the Excel file
 
 ## Input Data
@@ -32,8 +34,11 @@ The Excel file must contain these columns:
 | `stepY` | Frame height | um |
 | `offsetX` | X offset from frame lower-left origin | um |
 | `offsetY` | Y offset from frame lower-left origin | um |
+| `frame offset X` | Frame grid X offset | um |
+| `frame offset Y` | Frame grid Y offset | um |
 | `wafer diameter` | Wafer diameter | mm |
 | `flat` | Wafer edge type: `47.5 mm`, `57.5 mm`, `notch` | mm / type |
+| `show contour grid` | Show/hide contour grid (default hidden) | bool |
 
 Rules:
 
@@ -80,6 +85,8 @@ streamlit run app.py
 ## Notes
 
 - `thickness` uses unit `A`
-- `stepX`, `stepY`, `offsetX`, `offsetY` use unit `um`
+- `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y` use unit `um`
 - `wafer diameter` and flat size use unit `mm`
 - `notch` is currently drawn as an approximate V-notch
+- frame lines are light red dashed lines clipped inside wafer outline
+- contour grid is optional and shown in light gray when enabled

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path as MplPath
+from matplotlib.patches import Polygon
 from scipy.interpolate import griddata
 
 
@@ -155,11 +156,83 @@ def build_interpolated_grid(
     return gridX, gridY, gridZ
 
 
+def build_frame_positions(
+    axisMin: float,
+    axisMax: float,
+    pitchMm: float,
+    offsetMm: float,
+) -> np.ndarray:
+    if pitchMm <= 0:
+        return np.array([])
+
+    firstIndex = math.floor((axisMin - offsetMm) / pitchMm) - 1
+    lastIndex = math.ceil((axisMax - offsetMm) / pitchMm) + 1
+    frameIndexes = np.arange(firstIndex, lastIndex + 1)
+    return offsetMm + frameIndexes * pitchMm
+
+
+def draw_frames(
+    ax: plt.Axes,
+    outline: np.ndarray,
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+) -> None:
+    stepXMm = stepXUm / 1000.0
+    stepYMm = stepYUm / 1000.0
+    frameOffsetXMm = frameOffsetXUm / 1000.0
+    frameOffsetYMm = frameOffsetYUm / 1000.0
+    xMin, yMin = outline.min(axis=0)
+    xMax, yMax = outline.max(axis=0)
+
+    clipPatch = Polygon(
+        outline,
+        closed=True,
+        facecolor="none",
+        edgecolor="none",
+        transform=ax.transData,
+    )
+    ax.add_patch(clipPatch)
+
+    xPositions = build_frame_positions(xMin, xMax, stepXMm, frameOffsetXMm)
+    yPositions = build_frame_positions(yMin, yMax, stepYMm, frameOffsetYMm)
+
+    for xPos in xPositions:
+        line, = ax.plot(
+            [xPos, xPos],
+            [yMin, yMax],
+            color="#f4a3a3",
+            linewidth=0.9,
+            linestyle=(0, (4, 4)),
+            alpha=0.9,
+            zorder=2,
+        )
+        line.set_clip_path(clipPatch)
+
+    for yPos in yPositions:
+        line, = ax.plot(
+            [xMin, xMax],
+            [yPos, yPos],
+            color="#f4a3a3",
+            linewidth=0.9,
+            linestyle=(0, (4, 4)),
+            alpha=0.9,
+            zorder=2,
+        )
+        line.set_clip_path(clipPatch)
+
+
 def render_figure(
     pointsDf: pd.DataFrame,
     outline: np.ndarray,
     title: str,
     contourGrid: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+    showContourGrid: bool,
 ) -> plt.Figure:
     radius = np.max(np.linalg.norm(outline, axis=1))
     fig, ax = plt.subplots(figsize=(8, 8), dpi=200)
@@ -194,6 +267,7 @@ def render_figure(
         colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
         colorbar.set_label("Thickness (A)")
 
+    draw_frames(ax, outline, stepXUm, stepYUm, frameOffsetXUm, frameOffsetYUm)
     ax.plot(outline[:, 0], outline[:, 1], color="black", linewidth=2.0, zorder=4)
 
     for row in pointsDf.itertuples():
@@ -214,7 +288,10 @@ def render_figure(
     ax.set_xlabel("X (mm)")
     ax.set_ylabel("Y (mm)")
     ax.set_title(title)
-    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.35)
+    if showContourGrid:
+        ax.grid(True, color="#d9d9d9", linestyle="--", linewidth=0.6, alpha=0.9)
+    else:
+        ax.grid(False)
     return fig
 
 

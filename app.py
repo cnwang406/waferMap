@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-version = "0.1.0"
+version = "0.2.0"
 appDescription = f"""Wafer Contour Viewer
 
 by cnwang 2026/03.  v{version}
 
 input : excel with siteX, siteY, thickness
-parameters : stepX, stepY, offsetX, offsetY, diameter, flat
+parameters : stepX, stepY, offsetX, offsetY, frameOffsetX, frameOffsetY, diameter, flat
 output : contour plot, data table, JPG file
 
 framework : streamlit, pandas, matplotlib, scipy.interpolate
@@ -48,6 +48,8 @@ with st.sidebar:
     stepYUm = st.number_input("stepY (um)", min_value=0.0, value=10000.0, step=100.0)
     offsetXUm = st.number_input("offsetX (um)", min_value=0.0, value=0.0, step=10.0)
     offsetYUm = st.number_input("offsetY (um)", min_value=0.0, value=0.0, step=10.0)
+    frameOffsetXUm = st.number_input("frame offset X (um)", value=0.0, step=10.0)
+    frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
     diameterMm = st.number_input(
         "wafer diameter (mm)",
         min_value=1.0,
@@ -55,6 +57,7 @@ with st.sidebar:
         step=1.0,
     )
     flatOption = st.selectbox("flat", list(flatOptions.keys()), index=0)
+    showContourGrid = st.checkbox("顯示 contour grid", value=False)
 
 uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
 
@@ -115,7 +118,17 @@ if outsideCount:
 if contourGrid is None:
     st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
 
-figure = render_figure(plotDf, outline, title, contourGrid)
+figure = render_figure(
+    plotDf,
+    outline,
+    title,
+    contourGrid,
+    stepXUm=stepXUm,
+    stepYUm=stepYUm,
+    frameOffsetXUm=frameOffsetXUm,
+    frameOffsetYUm=frameOffsetYUm,
+    showContourGrid=showContourGrid,
+)
 jpgBytes = figure_to_jpg_bytes(figure)
 outputPath = Path.cwd() / f"{fileName.stem}.jpg"
 outputPath.write_bytes(jpgBytes)
