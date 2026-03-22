@@ -217,12 +217,52 @@ def draw_frames(
     frameOffsetXUm: float,
     frameOffsetYUm: float,
 ) -> None:
+    completeFrames = build_complete_frame_rectangles(
+        outline=outline,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        frameOffsetXUm=frameOffsetXUm,
+        frameOffsetYUm=frameOffsetYUm,
+    )
+    frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+
+    for xOrigin, yOrigin, xRight, yTop in completeFrames:
+        corners = [
+            (xOrigin, yOrigin),
+            (xRight, yOrigin),
+            (xRight, yTop),
+            (xOrigin, yTop),
+        ]
+        for index in range(4):
+            pointA = corners[index]
+            pointB = corners[(index + 1) % 4]
+            frameEdges.add(canonical_edge_key(pointA, pointB))
+
+    for pointA, pointB in sorted(frameEdges):
+        ax.plot(
+            [pointA[0], pointB[0]],
+            [pointA[1], pointB[1]],
+            color="#f4a3a3",
+            linewidth=0.9,
+            linestyle=(0, (4, 4)),
+            alpha=0.9,
+            zorder=2,
+        )
+
+
+def build_complete_frame_rectangles(
+    outline: np.ndarray,
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+) -> list[tuple[float, float, float, float]]:
     stepXMm = stepXUm / 1000.0
     stepYMm = stepYUm / 1000.0
     frameOffsetXMm = frameOffsetXUm / 1000.0
     frameOffsetYMm = frameOffsetYUm / 1000.0
     if stepXMm <= 0 or stepYMm <= 0:
-        return
+        return []
 
     xMin, yMin = outline.min(axis=0)
     xMax, yMax = outline.max(axis=0)
@@ -230,7 +270,7 @@ def draw_frames(
 
     xOrigins = build_frame_origins(xMin, xMax, stepXMm, frameOffsetXMm)
     yOrigins = build_frame_origins(yMin, yMax, stepYMm, frameOffsetYMm)
-    frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+    completeFrames: list[tuple[float, float, float, float]] = []
 
     for xOrigin in xOrigins:
         xRight = xOrigin + stepXMm
@@ -244,27 +284,26 @@ def draw_frames(
             if not is_complete_frame_inside(outlinePath, xOrigin, yOrigin, stepXMm, stepYMm):
                 continue
 
-            corners = [
-                (xOrigin, yOrigin),
-                (xRight, yOrigin),
-                (xRight, yTop),
-                (xOrigin, yTop),
-            ]
-            for index in range(4):
-                pointA = corners[index]
-                pointB = corners[(index + 1) % 4]
-                frameEdges.add(canonical_edge_key(pointA, pointB))
+            completeFrames.append((xOrigin, yOrigin, xRight, yTop))
 
-    for pointA, pointB in sorted(frameEdges):
-        ax.plot(
-            [pointA[0], pointB[0]],
-            [pointA[1], pointB[1]],
-            color="#f4a3a3",
-            linewidth=0.9,
-            linestyle=(0, (4, 4)),
-            alpha=0.9,
-            zorder=2,
-        )
+    return completeFrames
+
+
+def count_complete_frames(
+    outline: np.ndarray,
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+) -> int:
+    completeFrames = build_complete_frame_rectangles(
+        outline=outline,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        frameOffsetXUm=frameOffsetXUm,
+        frameOffsetYUm=frameOffsetYUm,
+    )
+    return len(completeFrames)
 
 
 def render_figure(

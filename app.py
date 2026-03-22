@@ -27,6 +27,7 @@ from wafermap_core import (
     build_wafer_outline,
     calculate_positions,
     collapse_duplicate_points,
+    count_complete_frames,
     count_points_outside_outline,
     figure_to_jpg_bytes,
     normalize_columns,
@@ -47,6 +48,7 @@ def build_info_panel_text(
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    totalFrames: int,
     offsetXUm: float,
     offsetYUm: float,
     diameterMm: float,
@@ -66,6 +68,7 @@ def build_info_panel_text(
         f"frame H: {stepYUm:.1f} um",
         f"frameOffsetX: {frameOffsetXUm:.1f} um",
         f"frameOffsetY: {frameOffsetYUm:.1f} um",
+        f"total frames: {totalFrames}",
         "",
         f"site offset X: {offsetXUm:.1f} um",
         f"site offset Y: {offsetYUm:.1f} um",
@@ -130,6 +133,13 @@ except ValueError as exc:
     st.stop()
 
 outline = build_wafer_outline(diameterMm=diameterMm, flatOption=flatOption)
+totalFrames = count_complete_frames(
+    outline=outline,
+    stepXUm=stepXUm,
+    stepYUm=stepYUm,
+    frameOffsetXUm=frameOffsetXUm,
+    frameOffsetYUm=frameOffsetYUm,
+)
 plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
 calculatedDf = pd.DataFrame()
 duplicateCount = 0
@@ -206,6 +216,7 @@ infoPanelText = build_info_panel_text(
     stepYUm=stepYUm,
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
+    totalFrames=totalFrames,
     offsetXUm=offsetXUm,
     offsetYUm=offsetYUm,
     diameterMm=diameterMm,

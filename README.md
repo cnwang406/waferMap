@@ -20,6 +20,7 @@ by cnwang, 2026/03
 - Render measurement point labels when Excel data exists
 - Toggle contour grid display (hidden by default, light gray when shown)
 - Optional info panel on the right side of wafer chart
+- Info panel includes `total frames` (count of complete frames)
 - Bottom-edge signature text: `by cnwang {VERSION}`
 - Title input supported; when Excel is uploaded, title automatically uses Excel filename
 - Export chart as `.jpg`
@@ -103,4 +104,5 @@ streamlit run app.py
 - `notch` is currently drawn as an approximate V-notch
 - frame lines are light red dashed lines
 - only fully complete rectangular frames are drawn
+- `total frames` in info panel counts only complete rectangular frames
 - contour grid is optional and shown in light gray when enabled
