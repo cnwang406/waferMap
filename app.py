@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-version = "0.4.0"
+version = "1.0"
 appDescription = f"""Wafer Contour Viewer
 
 by cnwang 2026/03.  v{version}
