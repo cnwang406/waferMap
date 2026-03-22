@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path as MplPath
-from matplotlib.patches import Polygon
 from scipy.interpolate import griddata
 
 
@@ -156,7 +155,7 @@ def build_interpolated_grid(
     return gridX, gridY, gridZ
 
 
-def build_frame_positions(
+def build_frame_origins(
     axisMin: float,
     axisMax: float,
     pitchMm: float,
@@ -171,6 +170,45 @@ def build_frame_positions(
     return offsetMm + frameIndexes * pitchMm
 
 
+def build_frame_edge_samples(
+    xOrigin: float,
+    yOrigin: float,
+    stepXMm: float,
+    stepYMm: float,
+    samplesPerEdge: int = 7,
+) -> np.ndarray:
+    tValues = np.linspace(0.0, 1.0, samplesPerEdge)
+    xRight = xOrigin + stepXMm
+    yTop = yOrigin + stepYMm
+    bottom = np.column_stack((xOrigin + tValues * stepXMm, np.full_like(tValues, yOrigin)))
+    right = np.column_stack((np.full_like(tValues, xRight), yOrigin + tValues * stepYMm))
+    top = np.column_stack((xRight - tValues * stepXMm, np.full_like(tValues, yTop)))
+    left = np.column_stack((np.full_like(tValues, xOrigin), yTop - tValues * stepYMm))
+    return np.vstack((bottom, right, top, left))
+
+
+def is_complete_frame_inside(
+    outlinePath: MplPath,
+    xOrigin: float,
+    yOrigin: float,
+    stepXMm: float,
+    stepYMm: float,
+) -> bool:
+    edgeSamples = build_frame_edge_samples(xOrigin, yOrigin, stepXMm, stepYMm)
+    inside = outlinePath.contains_points(edgeSamples, radius=1e-9)
+    return bool(np.all(inside))
+
+
+def canonical_edge_key(
+    pointA: tuple[float, float],
+    pointB: tuple[float, float],
+    decimals: int = 6,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    roundedA = (round(float(pointA[0]), decimals), round(float(pointA[1]), decimals))
+    roundedB = (round(float(pointB[0]), decimals), round(float(pointB[1]), decimals))
+    return (roundedA, roundedB) if roundedA <= roundedB else (roundedB, roundedA)
+
+
 def draw_frames(
     ax: plt.Axes,
     outline: np.ndarray,
@@ -183,44 +221,50 @@ def draw_frames(
     stepYMm = stepYUm / 1000.0
     frameOffsetXMm = frameOffsetXUm / 1000.0
     frameOffsetYMm = frameOffsetYUm / 1000.0
+    if stepXMm <= 0 or stepYMm <= 0:
+        return
+
     xMin, yMin = outline.min(axis=0)
     xMax, yMax = outline.max(axis=0)
+    outlinePath = MplPath(outline)
 
-    clipPatch = Polygon(
-        outline,
-        closed=True,
-        facecolor="none",
-        edgecolor="none",
-        transform=ax.transData,
-    )
-    ax.add_patch(clipPatch)
+    xOrigins = build_frame_origins(xMin, xMax, stepXMm, frameOffsetXMm)
+    yOrigins = build_frame_origins(yMin, yMax, stepYMm, frameOffsetYMm)
+    frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
 
-    xPositions = build_frame_positions(xMin, xMax, stepXMm, frameOffsetXMm)
-    yPositions = build_frame_positions(yMin, yMax, stepYMm, frameOffsetYMm)
+    for xOrigin in xOrigins:
+        xRight = xOrigin + stepXMm
+        if xRight < xMin or xOrigin > xMax:
+            continue
 
-    for xPos in xPositions:
-        line, = ax.plot(
-            [xPos, xPos],
-            [yMin, yMax],
+        for yOrigin in yOrigins:
+            yTop = yOrigin + stepYMm
+            if yTop < yMin or yOrigin > yMax:
+                continue
+            if not is_complete_frame_inside(outlinePath, xOrigin, yOrigin, stepXMm, stepYMm):
+                continue
+
+            corners = [
+                (xOrigin, yOrigin),
+                (xRight, yOrigin),
+                (xRight, yTop),
+                (xOrigin, yTop),
+            ]
+            for index in range(4):
+                pointA = corners[index]
+                pointB = corners[(index + 1) % 4]
+                frameEdges.add(canonical_edge_key(pointA, pointB))
+
+    for pointA, pointB in sorted(frameEdges):
+        ax.plot(
+            [pointA[0], pointB[0]],
+            [pointA[1], pointB[1]],
             color="#f4a3a3",
             linewidth=0.9,
             linestyle=(0, (4, 4)),
             alpha=0.9,
             zorder=2,
         )
-        line.set_clip_path(clipPatch)
-
-    for yPos in yPositions:
-        line, = ax.plot(
-            [xMin, xMax],
-            [yPos, yPos],
-            color="#f4a3a3",
-            linewidth=0.9,
-            linestyle=(0, (4, 4)),
-            alpha=0.9,
-            zorder=2,
-        )
-        line.set_clip_path(clipPatch)
 
 
 def render_figure(
@@ -234,11 +278,15 @@ def render_figure(
     frameOffsetYUm: float,
     showContour: bool,
     showContourGrid: bool,
+    showInfoPanel: bool,
+    infoPanelText: str,
+    signatureText: str,
 ) -> plt.Figure:
     radius = np.max(np.linalg.norm(outline, axis=1))
     hasPoints = not pointsDf.empty
     canRenderContour = showContour and contourGrid is not None
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=200)
+    figureWidth = 10.8 if showInfoPanel else 8.0
+    fig, ax = plt.subplots(figsize=(figureWidth, 8), dpi=200)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#f8fbff")
 
@@ -297,6 +345,37 @@ def render_figure(
         ax.grid(True, color="#d9d9d9", linestyle="--", linewidth=0.6, alpha=0.9)
     else:
         ax.grid(False)
+
+    if showInfoPanel and infoPanelText:
+        ax.text(
+            1.03,
+            0.98,
+            infoPanelText,
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            fontsize=8.8,
+            color="#2f2f2f",
+            linespacing=1.35,
+            bbox={
+                "boxstyle": "round,pad=0.35",
+                "fc": "white",
+                "ec": "#c9c9c9",
+                "alpha": 0.95,
+            },
+            clip_on=False,
+        )
+
+    if signatureText:
+        fig.text(
+            0.99,
+            0.008,
+            signatureText,
+            ha="right",
+            va="bottom",
+            fontsize=8.5,
+            color="#bdbdbd",
+        )
     return fig
 
 

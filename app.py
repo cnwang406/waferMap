@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-version = "0.2.0"
+version = "0.4.0"
 appDescription = f"""Wafer Contour Viewer
 
 by cnwang 2026/03.  v{version}
@@ -13,6 +13,7 @@ framework : streamlit, pandas, matplotlib, scipy.interpolate
 """
 
 
+import re
 import io
 from pathlib import Path
 
@@ -34,6 +35,50 @@ from wafermap_core import (
 )
 
 
+def sanitize_file_stem(rawText: str) -> str:
+    cleanedText = re.sub(r'[\\/:*?"<>|]+', "_", rawText.strip())
+    cleanedText = re.sub(r"\s+", "_", cleanedText)
+    cleanedText = cleanedText.strip("._")
+    return cleanedText or "wafer_frame_preview"
+
+
+def build_info_panel_text(
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+    offsetXUm: float,
+    offsetYUm: float,
+    diameterMm: float,
+    flatOption: str,
+    showContour: bool,
+    showContourGrid: bool,
+    title: str,
+    excelName: str,
+) -> str:
+    contourText = "ON" if showContour else "OFF"
+    gridText = "ON" if showContourGrid else "OFF"
+    lines = [
+        f"title: {title}",
+        f"contour data: {excelName}",
+        "",
+        f"frame W: {stepXUm:.1f} um",
+        f"frame H: {stepYUm:.1f} um",
+        f"frameOffsetX: {frameOffsetXUm:.1f} um",
+        f"frameOffsetY: {frameOffsetYUm:.1f} um",
+        "",
+        f"site offset X: {offsetXUm:.1f} um",
+        f"site offset Y: {offsetYUm:.1f} um",
+        "",
+        f"diameter: {diameterMm:.1f} mm",
+        f"flat: {flatOption}",
+        "",
+        f"contour map: {contourText}",
+        f"contour grid: {gridText}",
+    ]
+    return "\n".join(lines)
+
+
 st.set_page_config(page_title=f"Wafer Contour Viewer, by cnwang {version}", layout="wide")
 st.title("Wafer Thickness Contour")
 
@@ -44,21 +89,37 @@ st.caption(
 
 with st.sidebar:
     st.header("輸入參數")
-    stepXUm = st.number_input("stepX (um)", min_value=0.0, value=10000.0, step=100.0)
-    stepYUm = st.number_input("stepY (um)", min_value=0.0, value=10000.0, step=100.0)
-    offsetXUm = st.number_input("offsetX (um)", min_value=0.0, value=0.0, step=10.0)
-    offsetYUm = st.number_input("offsetY (um)", min_value=0.0, value=0.0, step=10.0)
-    frameOffsetXUm = st.number_input("frame offset X (um)", value=0.0, step=10.0)
-    frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
-    diameterMm = st.number_input(
-        "wafer diameter (mm)",
-        min_value=1.0,
-        value=defaultDiameterMm,
-        step=1.0,
-    )
-    flatOption = st.selectbox("flat", list(flatOptions.keys()), index=0)
-    showContour = st.checkbox("顯示 contour", value=True)
-    showContourGrid = st.checkbox("顯示 contour grid", value=False)
+    with st.container(border=True):
+        st.caption("Frame Step / Frame Offset")
+        columnA, columnB = st.columns(2)
+        with columnA:
+            stepXUm = st.number_input("stepX (um)", min_value=0.0, value=10000.0, step=100.0)
+            frameOffsetXUm = st.number_input("frame offset X (um)", value=0.0, step=10.0)
+        with columnB:
+            stepYUm = st.number_input("stepY (um)", min_value=0.0, value=10000.0, step=100.0)
+            frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
+
+    with st.container(border=True):
+        st.caption("Site Offset")
+        offsetXUm = st.number_input("offsetX (um)", min_value=0.0, value=0.0, step=10.0)
+        offsetYUm = st.number_input("offsetY (um)", min_value=0.0, value=0.0, step=10.0)
+
+    with st.container(border=True):
+        st.caption("Wafer")
+        diameterMm = st.number_input(
+            "wafer diameter (mm)",
+            min_value=1.0,
+            value=defaultDiameterMm,
+            step=1.0,
+        )
+        flatOption = st.selectbox("flat", list(flatOptions.keys()), index=1)
+
+    with st.container(border=True):
+        st.caption("Display / Title")
+        showContour = st.checkbox("顯示 contour", value=True)
+        showContourGrid = st.checkbox("顯示 contour grid", value=False)
+        showInfoPanel = st.checkbox("右側顯示參數資訊", value=False)
+        inputTitle = st.text_input("title", value="wafer_frame_preview")
 
 uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
 
@@ -76,11 +137,16 @@ outsideCount = 0
 contourGrid = None
 hasExcelData = uploadedFile is not None
 outputStem = "wafer_frame_preview"
+title = inputTitle.strip() if inputTitle.strip() else "wafer_frame_preview"
+outputStem = sanitize_file_stem(title)
+excelNameForInfo = "(none)"
 
 if hasExcelData:
     fileBytes = uploadedFile.getvalue()
     fileName = Path(uploadedFile.name)
+    excelNameForInfo = fileName.name
     outputStem = fileName.stem
+    title = fileName.stem
 
     try:
         excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
@@ -116,11 +182,13 @@ if hasExcelData:
 else:
     st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
 
-title = outputStem
 showContourEffective = showContour and hasExcelData
 
 if showContour and not hasExcelData:
     st.caption("未提供 Excel，contour 已自動關閉。")
+
+if hasExcelData:
+    st.caption(f"已上傳 Excel，title 自動使用檔名: {title}")
 
 if duplicateCount:
     st.warning(
@@ -133,6 +201,21 @@ if outsideCount:
 if showContourEffective and contourGrid is None:
     st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
 
+infoPanelText = build_info_panel_text(
+    stepXUm=stepXUm,
+    stepYUm=stepYUm,
+    frameOffsetXUm=frameOffsetXUm,
+    frameOffsetYUm=frameOffsetYUm,
+    offsetXUm=offsetXUm,
+    offsetYUm=offsetYUm,
+    diameterMm=diameterMm,
+    flatOption=flatOption,
+    showContour=showContourEffective,
+    showContourGrid=showContourGrid,
+    title=title,
+    excelName=excelNameForInfo,
+)
+
 figure = render_figure(
     plotDf,
     outline,
@@ -144,6 +227,9 @@ figure = render_figure(
     frameOffsetYUm=frameOffsetYUm,
     showContour=showContourEffective,
     showContourGrid=showContourGrid,
+    showInfoPanel=showInfoPanel,
+    infoPanelText=infoPanelText,
+    signatureText=f"by cnwang {version}",
 )
 jpgBytes = figure_to_jpg_bytes(figure)
 outputPath = Path.cwd() / f"{outputStem}.jpg"
