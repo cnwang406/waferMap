@@ -232,14 +232,17 @@ def render_figure(
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    showContour: bool,
     showContourGrid: bool,
 ) -> plt.Figure:
     radius = np.max(np.linalg.norm(outline, axis=1))
+    hasPoints = not pointsDf.empty
+    canRenderContour = showContour and contourGrid is not None
     fig, ax = plt.subplots(figsize=(8, 8), dpi=200)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#f8fbff")
 
-    if contourGrid is not None:
+    if canRenderContour:
         gridX, gridY, gridZ = contourGrid
         contour = ax.contourf(
             gridX,
@@ -252,34 +255,36 @@ def render_figure(
         colorbar = fig.colorbar(contour, ax=ax, fraction=0.046, pad=0.04)
         colorbar.set_label("Thickness (A)")
 
-    scatter = ax.scatter(
-        pointsDf["posXMm"],
-        pointsDf["posYMm"],
-        c=pointsDf["thickness"],
-        cmap="viridis",
-        s=46,
-        edgecolors="black",
-        linewidths=0.6,
-        zorder=3,
-    )
+    if hasPoints:
+        scatter = ax.scatter(
+            pointsDf["posXMm"],
+            pointsDf["posYMm"],
+            c=pointsDf["thickness"],
+            cmap="viridis",
+            s=46,
+            edgecolors="black",
+            linewidths=0.6,
+            zorder=3,
+        )
 
-    if contourGrid is None:
-        colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
-        colorbar.set_label("Thickness (A)")
+        if not canRenderContour:
+            colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
+            colorbar.set_label("Thickness (A)")
 
     draw_frames(ax, outline, stepXUm, stepYUm, frameOffsetXUm, frameOffsetYUm)
     ax.plot(outline[:, 0], outline[:, 1], color="black", linewidth=2.0, zorder=4)
 
-    for row in pointsDf.itertuples():
-        ax.annotate(
-            f"{row.thickness:.1f}",
-            (row.posXMm, row.posYMm),
-            textcoords="offset points",
-            xytext=(5, 5),
-            fontsize=8,
-            color="#1a1a1a",
-            bbox={"boxstyle": "round,pad=0.18", "fc": "white", "ec": "none", "alpha": 0.7},
-        )
+    if hasPoints:
+        for row in pointsDf.itertuples():
+            ax.annotate(
+                f"{row.thickness:.1f}",
+                (row.posXMm, row.posYMm),
+                textcoords="offset points",
+                xytext=(5, 5),
+                fontsize=8,
+                color="#1a1a1a",
+                bbox={"boxstyle": "round,pad=0.18", "fc": "white", "ec": "none", "alpha": 0.7},
+            )
 
     margin = max(radius * 0.06, 5.0)
     ax.set_xlim(outline[:, 0].min() - margin, outline[:, 0].max() + margin)

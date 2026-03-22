@@ -7,18 +7,23 @@ by cnwang, 2026/03
 
 ## Features
 
-- Upload an Excel file with `siteX`, `siteY`, and `thickness`
+- Excel upload is optional
+- No Excel: render wafer outline + frame-only preview
+- With Excel: render points and optional contour
 - Input wafer map parameters: `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y`, `wafer diameter`, `flat`
 - Convert site coordinates into absolute wafer coordinates
 - Draw wafer outline with `47.5 mm`, `57.5 mm`, or `notch`
 - Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
-- Render contour map and measurement point labels
+- Toggle contour display
+- Render measurement point labels when Excel data exists
 - Toggle contour grid display (hidden by default, light gray when shown)
-- Export the chart as a `.jpg` using the same base filename as the Excel file
+- Export chart as `.jpg`
+- With Excel: output filename follows uploaded Excel base name
+- Without Excel: output filename is `wafer_frame_preview.jpg`
 
-## Input Data
+## Input Data (Optional)
 
-The Excel file must contain these columns:
+If you upload Excel, it must contain these columns:
 
 | Column | Description | Unit |
 | --- | --- | --- |
@@ -38,6 +43,7 @@ The Excel file must contain these columns:
 | `frame offset Y` | Frame grid Y offset | um |
 | `wafer diameter` | Wafer diameter | mm |
 | `flat` | Wafer edge type: `47.5 mm`, `57.5 mm`, `notch` | mm / type |
+| `show contour` | Show/hide contour (only effective when Excel is uploaded) | bool |
 | `show contour grid` | Show/hide contour grid (default hidden) | bool |
 
 Rules:
@@ -71,9 +77,9 @@ streamlit run app.py
 
 ## Output
 
-- Interactive Streamlit view of the wafer contour
-- Thickness labels displayed at each measurement point
-- A `.jpg` file saved in the working directory using the uploaded Excel filename
+- Interactive Streamlit view of wafer frames (always)
+- Contour and thickness labels when Excel data is uploaded
+- A `.jpg` file saved in the working directory
 - A download button in the Streamlit UI for the generated image
 
 ## Files

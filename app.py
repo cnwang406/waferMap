@@ -7,7 +7,7 @@ by cnwang 2026/03.  v{version}
 
 input : excel with siteX, siteY, thickness
 parameters : stepX, stepY, offsetX, offsetY, frameOffsetX, frameOffsetY, diameter, flat
-output : contour plot, data table, JPG file
+output : frame-only preview or contour plot, data table, JPG file
 
 framework : streamlit, pandas, matplotlib, scipy.interpolate
 """
@@ -57,13 +57,10 @@ with st.sidebar:
         step=1.0,
     )
     flatOption = st.selectbox("flat", list(flatOptions.keys()), index=0)
+    showContour = st.checkbox("顯示 contour", value=True)
     showContourGrid = st.checkbox("顯示 contour grid", value=False)
 
 uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
-
-if not uploadedFile:
-    st.info("請上傳包含 siteX、siteY、thickness 欄位的 Excel 檔案。")
-    st.stop()
 
 try:
     validate_parameters(stepXUm, stepYUm, offsetXUm, offsetYUm, diameterMm)
@@ -71,41 +68,59 @@ except ValueError as exc:
     st.error(str(exc))
     st.stop()
 
-fileBytes = uploadedFile.getvalue()
-fileName = Path(uploadedFile.name)
-
-try:
-    excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
-except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-    st.error(f"無法讀取 Excel 檔案: {exc}")
-    st.stop()
-
-sheetName = st.selectbox("選擇工作表", excelFile.sheet_names)
-
-try:
-    rawDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName)
-    sourceDf = normalize_columns(rawDf)
-    sourceDf = sourceDf.apply(pd.to_numeric, errors="raise")
-except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-    st.error(f"資料格式錯誤: {exc}")
-    st.stop()
-
-if sourceDf.empty:
-    st.error("Excel 目前沒有可用資料列。")
-    st.stop()
-
-calculatedDf = calculate_positions(
-    sourceDf,
-    stepXUm=stepXUm,
-    stepYUm=stepYUm,
-    offsetXUm=offsetXUm,
-    offsetYUm=offsetYUm,
-)
-plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
 outline = build_wafer_outline(diameterMm=diameterMm, flatOption=flatOption)
-contourGrid = build_interpolated_grid(plotDf, outline)
-outsideCount = count_points_outside_outline(plotDf, outline)
-title = fileName.stem
+plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
+calculatedDf = pd.DataFrame()
+duplicateCount = 0
+outsideCount = 0
+contourGrid = None
+hasExcelData = uploadedFile is not None
+outputStem = "wafer_frame_preview"
+
+if hasExcelData:
+    fileBytes = uploadedFile.getvalue()
+    fileName = Path(uploadedFile.name)
+    outputStem = fileName.stem
+
+    try:
+        excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
+    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+        st.error(f"無法讀取 Excel 檔案: {exc}")
+        st.stop()
+
+    sheetName = st.selectbox("選擇工作表", excelFile.sheet_names)
+
+    try:
+        rawDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName)
+        sourceDf = normalize_columns(rawDf)
+        sourceDf = sourceDf.apply(pd.to_numeric, errors="raise")
+    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+        st.error(f"資料格式錯誤: {exc}")
+        st.stop()
+
+    if sourceDf.empty:
+        st.error("Excel 目前沒有可用資料列。")
+        st.stop()
+
+    calculatedDf = calculate_positions(
+        sourceDf,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        offsetXUm=offsetXUm,
+        offsetYUm=offsetYUm,
+    )
+    plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
+    outsideCount = count_points_outside_outline(plotDf, outline)
+    if showContour:
+        contourGrid = build_interpolated_grid(plotDf, outline)
+else:
+    st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
+
+title = outputStem
+showContourEffective = showContour and hasExcelData
+
+if showContour and not hasExcelData:
+    st.caption("未提供 Excel，contour 已自動關閉。")
 
 if duplicateCount:
     st.warning(
@@ -115,7 +130,7 @@ if duplicateCount:
 if outsideCount:
     st.warning(f"有 {outsideCount} 個量測點落在 wafer 外框之外，請確認 step/offset 或來源資料。")
 
-if contourGrid is None:
+if showContourEffective and contourGrid is None:
     st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
 
 figure = render_figure(
@@ -127,10 +142,11 @@ figure = render_figure(
     stepYUm=stepYUm,
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
+    showContour=showContourEffective,
     showContourGrid=showContourGrid,
 )
 jpgBytes = figure_to_jpg_bytes(figure)
-outputPath = Path.cwd() / f"{fileName.stem}.jpg"
+outputPath = Path.cwd() / f"{outputStem}.jpg"
 outputPath.write_bytes(jpgBytes)
 
 colChart, colData = st.columns([1.4, 1.0])
@@ -140,7 +156,7 @@ with colChart:
     st.download_button(
         label="下載 JPG",
         data=jpgBytes,
-        file_name=f"{fileName.stem}.jpg",
+        file_name=f"{outputStem}.jpg",
         mime="image/jpeg",
     )
     st.success(f"JPG 已輸出為 {outputPath.name}")
@@ -149,10 +165,13 @@ with colChart:
 
 with colData:
     st.subheader("計算結果")
-    st.dataframe(
-        calculatedDf[["siteX", "siteY", "thickness", "posXUm", "posYUm", "posXMm", "posYMm"]],
-        use_container_width=True,
-        hide_index=True,
-    )
+    if hasExcelData:
+        st.dataframe(
+            calculatedDf[["siteX", "siteY", "thickness", "posXUm", "posYUm", "posXMm", "posYMm"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("未提供 Excel，無量測資料表可顯示。")
 
 plt.close(figure)
