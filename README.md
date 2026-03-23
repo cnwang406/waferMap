@@ -18,16 +18,19 @@ by cnwang, 2026/03
 - No Excel: render wafer outline + frame-only preview
 - With Excel: render points and optional contour
 - Sidebar parameters are arranged in 4 boxed sections
-- Input wafer map parameters: `stepX`, `stepY`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`
+- Input wafer map parameters: `stepX`, `stepY`, `top`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`, `edge exclude`
 - Convert site coordinates into absolute wafer coordinates
 - Draw wafer outline with `47.5 mm`, `57.5 mm`, or `notch`
+- Draw an inner effective wafer boundary using `edge exclude` (light red line)
 - Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
+- Frame vertical placement starts from wafer top minus `top`, then arranged downward
 - Show only complete rectangular frames fully inside wafer; partial frame segments are hidden
 - Toggle contour display
 - Render measurement point labels when Excel data exists
 - Toggle contour grid display (hidden by default, light gray when shown)
 - Optional info panel on the right side of wafer chart
 - Info panel includes `total frames` (count of complete frames)
+- Info panel includes `edge exclude`, `top`, and `frame bottom gap` (mm)
 - Bottom-edge signature text: `by cnwang {VERSION}`
 - Title input supported; when Excel is uploaded, title automatically uses Excel filename
 - Export chart as `.jpg`
@@ -50,12 +53,14 @@ If you upload Excel, it must contain these columns:
 | --- | --- | --- |
 | `stepX` | Frame width | um |
 | `stepY` | Frame height | um |
+| `top` | Start frame placement from wafer top minus this value | mm |
 | `frame offset X` | Frame grid X offset | um |
 | `frame offset Y` | Frame grid Y offset | um |
 | `offsetX` | Site offset X from frame lower-left origin | um |
 | `offsetY` | Site offset Y from frame lower-left origin | um |
 | `wafer diameter` | Wafer diameter | mm |
 | `flat` | Wafer edge type: `47.5 mm`, `57.5 mm`, `notch` (default `57.5 mm`) | mm / type |
+| `edge exclude` | Inward shrink distance from original wafer edge (default `2.5`) | mm |
 | `show contour` | Show/hide contour (only effective when Excel is uploaded) | bool |
 | `show contour grid` | Show/hide contour grid (default hidden) | bool |
 | `show info panel` | Show/hide parameter summary text at chart right side | bool |
@@ -66,6 +71,9 @@ Rules:
 - `offsetX < stepX`
 - `offsetY < stepY`
 - default wafer diameter is `150 mm`
+- default `top` is `10 mm`
+- default `edge exclude` is `2.5 mm`
+- contour range, outside-wafer checks, and complete-frame checks are based on the effective (edge-excluded) wafer boundary
 
 Position calculation:
 
@@ -94,6 +102,7 @@ streamlit run app.py
 
 - Interactive Streamlit view of wafer frames (always)
 - Contour and thickness labels when Excel data is uploaded
+- Light red inner boundary shows effective wafer area after `edge exclude`
 - A `.jpg` file saved in the working directory
 - A download button in the Streamlit UI for the generated image
 
@@ -107,9 +116,11 @@ streamlit run app.py
 
 - `thickness` uses unit `A`
 - `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y` use unit `um`
-- `wafer diameter` and flat size use unit `mm`
+- `wafer diameter`, `top`, `edge exclude`, and flat size use unit `mm`
 - `notch` is currently drawn as an approximate V-notch
 - frame lines are light red dashed lines
 - only fully complete rectangular frames are drawn
 - `total frames` in info panel counts only complete rectangular frames
+- frame vertical placement starts from top and goes downward
+- `frame bottom gap` in info panel is the distance from arranged frame bottom edge to effective wafer bottom edge
 - contour grid is optional and shown in light gray when enabled

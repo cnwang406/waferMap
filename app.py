@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-version = "1.0"
+version = "1.1"
 appDescription = f"""Wafer Contour Viewer
 
 by cnwang 2026/03.  v{version}
@@ -21,13 +21,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 from wafermap_core import (
+    build_complete_frame_rectangles,
+    build_effective_outline,
     defaultDiameterMm,
     flatOptions,
     build_interpolated_grid,
     build_wafer_outline,
     calculate_positions,
     collapse_duplicate_points,
-    count_complete_frames,
     count_points_outside_outline,
     figure_to_jpg_bytes,
     normalize_columns,
@@ -48,11 +49,14 @@ def build_info_panel_text(
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    topMm: float,
     totalFrames: int,
+    frameBottomGapMm: float,
     offsetXUm: float,
     offsetYUm: float,
     diameterMm: float,
     flatOption: str,
+    edgeExcludeMm: float,
     showContour: bool,
     showContourGrid: bool,
     title: str,
@@ -60,6 +64,7 @@ def build_info_panel_text(
 ) -> str:
     contourText = "ON" if showContour else "OFF"
     gridText = "ON" if showContourGrid else "OFF"
+    bottomGapText = f"{frameBottomGapMm:.2f} mm" if frameBottomGapMm >= 0 else "N/A"
     lines = [
         f"title: {title}",
         f"contour data: {excelName}",
@@ -68,13 +73,16 @@ def build_info_panel_text(
         f"frame H: {stepYUm:.1f} um",
         f"frameOffsetX: {frameOffsetXUm:.1f} um",
         f"frameOffsetY: {frameOffsetYUm:.1f} um",
+        f"top: {topMm:.2f} mm",
         f"total frames: {totalFrames}",
+        f"frame bottom gap: {bottomGapText}",
         "",
         f"site offset X: {offsetXUm:.1f} um",
         f"site offset Y: {offsetYUm:.1f} um",
         "",
         f"diameter: {diameterMm:.1f} mm",
         f"flat: {flatOption}",
+        f"edge exclude: {edgeExcludeMm:.2f} mm",
         "",
         f"contour map: {contourText}",
         f"contour grid: {gridText}",
@@ -101,6 +109,7 @@ with st.sidebar:
         with columnB:
             stepYUm = st.number_input("stepY (um)", min_value=0.0, value=10000.0, step=100.0)
             frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
+        topMm = st.number_input("top (mm)", min_value=0.0, value=10.0, step=0.1)
 
     with st.container(border=True):
         st.caption("Site Offset")
@@ -116,6 +125,7 @@ with st.sidebar:
             step=1.0,
         )
         flatOption = st.selectbox("flat", list(flatOptions.keys()), index=1)
+        edgeExcludeMm = st.number_input("edge exclude (mm)", min_value=0.0, value=2.5, step=0.1)
 
     with st.container(border=True):
         st.caption("Display / Title")
@@ -132,14 +142,27 @@ except ValueError as exc:
     st.error(str(exc))
     st.stop()
 
-outline = build_wafer_outline(diameterMm=diameterMm, flatOption=flatOption)
-totalFrames = count_complete_frames(
-    outline=outline,
+waferOutline = build_wafer_outline(diameterMm=diameterMm, flatOption=flatOption)
+effectiveOutline = build_effective_outline(waferOutline=waferOutline, edgeExcludeMm=edgeExcludeMm)
+if len(effectiveOutline) < 3:
+    st.error("edge exclude 太大，已無可用 wafer 區域。請調小 edge exclude。")
+    st.stop()
+
+completeFrames = build_complete_frame_rectangles(
+    outline=effectiveOutline,
     stepXUm=stepXUm,
     stepYUm=stepYUm,
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
+    topMm=topMm,
 )
+totalFrames = len(completeFrames)
+frameBottomGapMm = min((frame[1] for frame in completeFrames), default=float("nan")) - float(
+    effectiveOutline[:, 1].min()
+)
+if totalFrames == 0:
+    frameBottomGapMm = -1.0
+
 plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
 calculatedDf = pd.DataFrame()
 duplicateCount = 0
@@ -186,9 +209,9 @@ if hasExcelData:
         offsetYUm=offsetYUm,
     )
     plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
-    outsideCount = count_points_outside_outline(plotDf, outline)
+    outsideCount = count_points_outside_outline(plotDf, effectiveOutline)
     if showContour:
-        contourGrid = build_interpolated_grid(plotDf, outline)
+        contourGrid = build_interpolated_grid(plotDf, effectiveOutline)
 else:
     st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
 
@@ -216,11 +239,14 @@ infoPanelText = build_info_panel_text(
     stepYUm=stepYUm,
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
+    topMm=topMm,
     totalFrames=totalFrames,
+    frameBottomGapMm=frameBottomGapMm,
     offsetXUm=offsetXUm,
     offsetYUm=offsetYUm,
     diameterMm=diameterMm,
     flatOption=flatOption,
+    edgeExcludeMm=edgeExcludeMm,
     showContour=showContourEffective,
     showContourGrid=showContourGrid,
     title=title,
@@ -229,13 +255,15 @@ infoPanelText = build_info_panel_text(
 
 figure = render_figure(
     plotDf,
-    outline,
+    waferOutline,
+    effectiveOutline,
     title,
     contourGrid,
     stepXUm=stepXUm,
     stepYUm=stepYUm,
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
+    topMm=topMm,
     showContour=showContourEffective,
     showContourGrid=showContourGrid,
     showInfoPanel=showInfoPanel,

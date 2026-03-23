@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path as MplPath
+from scipy.ndimage import distance_transform_edt
 from scipy.interpolate import griddata
 
 
@@ -81,6 +82,57 @@ def build_wafer_outline(diameterMm: float, flatOption: str) -> np.ndarray:
     arc = np.column_stack((radius * np.cos(arcAngles), radius * np.sin(arcAngles)))
     flat = np.array([[halfFlat, yFlat], [-halfFlat, yFlat]])
     return np.vstack((arc, flat, arc[0]))
+
+
+def polygon_area(points: np.ndarray) -> float:
+    if len(points) < 3:
+        return 0.0
+    xValues = points[:, 0]
+    yValues = points[:, 1]
+    return 0.5 * np.sum(xValues * np.roll(yValues, -1) - yValues * np.roll(xValues, -1))
+
+
+def build_effective_outline(
+    waferOutline: np.ndarray,
+    edgeExcludeMm: float,
+    gridSize: int = 900,
+) -> np.ndarray:
+    if edgeExcludeMm <= 0:
+        return waferOutline.copy()
+
+    xMin, yMin = waferOutline.min(axis=0)
+    xMax, yMax = waferOutline.max(axis=0)
+    xValues = np.linspace(xMin, xMax, gridSize)
+    yValues = np.linspace(yMin, yMax, gridSize)
+    gridX, gridY = np.meshgrid(xValues, yValues)
+
+    outlinePath = MplPath(waferOutline)
+    maskInside = outlinePath.contains_points(
+        np.column_stack((gridX.ravel(), gridY.ravel()))
+    ).reshape(gridX.shape)
+    if not np.any(maskInside):
+        return np.empty((0, 2))
+
+    xStep = (xMax - xMin) / max(gridSize - 1, 1)
+    yStep = (yMax - yMin) / max(gridSize - 1, 1)
+    distanceInside = distance_transform_edt(maskInside, sampling=(yStep, xStep))
+    if float(distanceInside.max()) <= edgeExcludeMm:
+        return np.empty((0, 2))
+
+    contourFigure, contourAxis = plt.subplots(figsize=(4, 4), dpi=100)
+    contourSet = contourAxis.contour(xValues, yValues, distanceInside, levels=[edgeExcludeMm])
+    contourSegments = contourSet.allsegs[0] if contourSet.allsegs else []
+    plt.close(contourFigure)
+
+    if not contourSegments:
+        return np.empty((0, 2))
+
+    bestSegment = max(contourSegments, key=lambda segment: abs(polygon_area(segment)))
+    if len(bestSegment) < 3:
+        return np.empty((0, 2))
+    if not np.allclose(bestSegment[0], bestSegment[-1]):
+        bestSegment = np.vstack((bestSegment, bestSegment[0]))
+    return bestSegment
 
 
 def calculate_positions(
@@ -170,6 +222,32 @@ def build_frame_origins(
     return offsetMm + frameIndexes * pitchMm
 
 
+def build_frame_y_origins_from_top(
+    yMin: float,
+    yMax: float,
+    stepYMm: float,
+    topMm: float,
+    frameOffsetYMm: float,
+) -> np.ndarray:
+    if stepYMm <= 0:
+        return np.array([])
+
+    topEdgeStart = yMax - topMm - frameOffsetYMm
+    maxRows = int(math.ceil((yMax - yMin + topMm + abs(frameOffsetYMm)) / stepYMm)) + 5
+    yOrigins: list[float] = []
+
+    for rowIndex in range(maxRows):
+        yTop = topEdgeStart - rowIndex * stepYMm
+        yOrigin = yTop - stepYMm
+        if yOrigin > yMax:
+            continue
+        if yTop < yMin:
+            break
+        yOrigins.append(yOrigin)
+
+    return np.array(yOrigins)
+
+
 def build_frame_edge_samples(
     xOrigin: float,
     yOrigin: float,
@@ -216,6 +294,7 @@ def draw_frames(
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    topMm: float,
 ) -> None:
     completeFrames = build_complete_frame_rectangles(
         outline=outline,
@@ -223,6 +302,7 @@ def draw_frames(
         stepYUm=stepYUm,
         frameOffsetXUm=frameOffsetXUm,
         frameOffsetYUm=frameOffsetYUm,
+        topMm=topMm,
     )
     frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
 
@@ -256,6 +336,7 @@ def build_complete_frame_rectangles(
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    topMm: float,
 ) -> list[tuple[float, float, float, float]]:
     stepXMm = stepXUm / 1000.0
     stepYMm = stepYUm / 1000.0
@@ -269,7 +350,13 @@ def build_complete_frame_rectangles(
     outlinePath = MplPath(outline)
 
     xOrigins = build_frame_origins(xMin, xMax, stepXMm, frameOffsetXMm)
-    yOrigins = build_frame_origins(yMin, yMax, stepYMm, frameOffsetYMm)
+    yOrigins = build_frame_y_origins_from_top(
+        yMin=yMin,
+        yMax=yMax,
+        stepYMm=stepYMm,
+        topMm=topMm,
+        frameOffsetYMm=frameOffsetYMm,
+    )
     completeFrames: list[tuple[float, float, float, float]] = []
 
     for xOrigin in xOrigins:
@@ -295,6 +382,7 @@ def count_complete_frames(
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    topMm: float,
 ) -> int:
     completeFrames = build_complete_frame_rectangles(
         outline=outline,
@@ -302,26 +390,29 @@ def count_complete_frames(
         stepYUm=stepYUm,
         frameOffsetXUm=frameOffsetXUm,
         frameOffsetYUm=frameOffsetYUm,
+        topMm=topMm,
     )
     return len(completeFrames)
 
 
 def render_figure(
     pointsDf: pd.DataFrame,
-    outline: np.ndarray,
+    waferOutline: np.ndarray,
+    effectiveOutline: np.ndarray,
     title: str,
     contourGrid: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
     stepXUm: float,
     stepYUm: float,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
+    topMm: float,
     showContour: bool,
     showContourGrid: bool,
     showInfoPanel: bool,
     infoPanelText: str,
     signatureText: str,
 ) -> plt.Figure:
-    radius = np.max(np.linalg.norm(outline, axis=1))
+    radius = np.max(np.linalg.norm(waferOutline, axis=1))
     hasPoints = not pointsDf.empty
     canRenderContour = showContour and contourGrid is not None
     figureWidth = 10.8 if showInfoPanel else 8.0
@@ -358,8 +449,18 @@ def render_figure(
             colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
             colorbar.set_label("Thickness (A)")
 
-    draw_frames(ax, outline, stepXUm, stepYUm, frameOffsetXUm, frameOffsetYUm)
-    ax.plot(outline[:, 0], outline[:, 1], color="black", linewidth=2.0, zorder=4)
+    draw_frames(
+        ax,
+        effectiveOutline,
+        stepXUm,
+        stepYUm,
+        frameOffsetXUm,
+        frameOffsetYUm,
+        topMm,
+    )
+    ax.plot(waferOutline[:, 0], waferOutline[:, 1], color="black", linewidth=2.0, zorder=4)
+    if len(effectiveOutline) > 2:
+        ax.plot(effectiveOutline[:, 0], effectiveOutline[:, 1], color="#f4a3a3", linewidth=1.4, zorder=4)
 
     if hasPoints:
         for row in pointsDf.itertuples():
@@ -374,8 +475,8 @@ def render_figure(
             )
 
     margin = max(radius * 0.06, 5.0)
-    ax.set_xlim(outline[:, 0].min() - margin, outline[:, 0].max() + margin)
-    ax.set_ylim(outline[:, 1].min() - margin, outline[:, 1].max() + margin)
+    ax.set_xlim(waferOutline[:, 0].min() - margin, waferOutline[:, 0].max() + margin)
+    ax.set_ylim(waferOutline[:, 1].min() - margin, waferOutline[:, 1].max() + margin)
     ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("X (mm)")
     ax.set_ylabel("Y (mm)")
