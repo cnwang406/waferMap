@@ -34,6 +34,7 @@ from wafermap_core import (
     figure_to_jpg_bytes,
     normalize_columns,
     render_figure,
+    top_y_at_x,
     validate_parameters,
 )
 
@@ -76,8 +77,8 @@ def build_info_panel_text(
         "",
         f"frame W: {stepXUm:.1f} um",
         f"frame H: {stepYUm:.1f} um",
-        f"array X: {arrayX}",
-        f"array Y: {arrayY}",
+        f"arrayX: {arrayX}",
+        f"arrayY: {arrayY}",
         f"frameOffsetX: {frameOffsetXUm:.1f} um",
         f"frameOffsetY: {frameOffsetYUm:.1f} um",
         f"top: {topMm:.2f} mm",
@@ -120,9 +121,9 @@ with st.sidebar:
             frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
         arrayColA, arrayColB = st.columns(2)
         with arrayColA:
-            arrayX = st.number_input("array X", min_value=1, value=1, step=1, format="%d")
+            arrayX = st.number_input("arrayX", min_value=1, value=1, step=1, format="%d")
         with arrayColB:
-            arrayY = st.number_input("array Y", min_value=1, value=1, step=1, format="%d")
+            arrayY = st.number_input("arrayY", min_value=1, value=1, step=1, format="%d")
         topMm = st.number_input("top (mm)", min_value=0.0, value=10.0, step=0.1)
 
     with st.container(border=True):
@@ -147,6 +148,11 @@ with st.sidebar:
         showContour = st.checkbox("顯示 contour", value=True)
         showContourGrid = st.checkbox("顯示 contour grid", value=False)
         showInfoPanel = st.checkbox("右側顯示參數資訊", value=False)
+        frameLineColor = st.color_picker("frame line color", value="#f4a3a3")
+        dieLineColor = st.color_picker("die line color", value="#ececec")
+        effectiveEdgeColor = st.color_picker("effective edge color", value="#f4a3a3")
+        waferEdgeColor = st.color_picker("wafer edge color", value="#000000")
+        contourGridColor = st.color_picker("contour grid color", value="#d9d9d9")
         inputTitle = st.text_input("title", value="wafer_frame_preview")
 
 uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
@@ -163,6 +169,10 @@ if len(effectiveOutline) < 3:
     st.error("edge exclude 太大，已無可用 wafer 區域。請調小 edge exclude。")
     st.stop()
 
+centerReferenceX = (float(waferOutline[:, 0].min()) + float(waferOutline[:, 0].max())) / 2.0
+topReferenceY = top_y_at_x(waferOutline, centerReferenceX)
+bottomReferenceY = float(waferOutline[:, 1].min())
+
 completeFrames = build_complete_frame_rectangles(
     outline=effectiveOutline,
     stepXUm=stepXUm,
@@ -171,6 +181,8 @@ completeFrames = build_complete_frame_rectangles(
     frameOffsetYUm=frameOffsetYUm,
     topMm=topMm,
     bottomMm=bottomMm,
+    topReferenceY=topReferenceY,
+    bottomReferenceY=bottomReferenceY,
 )
 totalFrames = len(completeFrames)
 completeDies = build_complete_die_rectangles(
@@ -182,10 +194,11 @@ completeDies = build_complete_die_rectangles(
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
     topMm=topMm,
+    topReferenceY=topReferenceY,
 )
 totalDies = len(completeDies)
 frameBottomGapMm = min((frame[1] for frame in completeFrames), default=float("nan")) - float(
-    effectiveOutline[:, 1].min()
+    waferOutline[:, 1].min()
 )
 if totalFrames == 0:
     frameBottomGapMm = -1.0
@@ -298,11 +311,18 @@ figure = render_figure(
     frameOffsetYUm=frameOffsetYUm,
     topMm=topMm,
     bottomMm=bottomMm,
+    topReferenceY=topReferenceY,
+    bottomReferenceY=bottomReferenceY,
     showContour=showContourEffective,
     showContourGrid=showContourGrid,
     showInfoPanel=showInfoPanel,
     infoPanelText=infoPanelText,
     signatureText=f"by cnwang {version}",
+    frameLineColor=frameLineColor,
+    dieLineColor=dieLineColor,
+    effectiveEdgeColor=effectiveEdgeColor,
+    waferEdgeColor=waferEdgeColor,
+    contourGridColor=contourGridColor,
 )
 jpgBytes = figure_to_jpg_bytes(figure)
 outputPath = Path.cwd() / f"{outputStem}.jpg"

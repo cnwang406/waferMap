@@ -229,11 +229,13 @@ def build_frame_y_origins_from_top(
     topMm: float,
     offsetYMm: float,
     bottomMm: float,
+    topReferenceY: float,
+    bottomReferenceY: float,
 ) -> np.ndarray:
     if pitchMm <= 0:
         return np.array([])
 
-    topEdgeStart = yMax - topMm - offsetYMm
+    topEdgeStart = topReferenceY - topMm - offsetYMm
     maxRows = int(math.ceil((yMax - yMin + topMm + abs(offsetYMm)) / pitchMm)) + 8
     yOrigins: list[float] = []
 
@@ -242,13 +244,40 @@ def build_frame_y_origins_from_top(
         yOrigin = yTop - pitchMm
         if yOrigin > yMax:
             continue
-        if yOrigin < yMin + bottomMm:
+        if yOrigin < bottomReferenceY + bottomMm:
             break
         if yTop < yMin:
             break
         yOrigins.append(yOrigin)
 
     return np.array(yOrigins)
+
+
+def top_y_at_x(outline: np.ndarray, xRef: float) -> float:
+    intersections: list[float] = []
+
+    for index in range(len(outline) - 1):
+        pointA = outline[index]
+        pointB = outline[index + 1]
+        xA, yA = float(pointA[0]), float(pointA[1])
+        xB, yB = float(pointB[0]), float(pointB[1])
+
+        if abs(xA - xB) <= 1e-12:
+            if abs(xRef - xA) <= 1e-9:
+                intersections.append(max(yA, yB))
+            continue
+
+        t = (xRef - xA) / (xB - xA)
+        if 0.0 <= t <= 1.0:
+            yIntersect = yA + t * (yB - yA)
+            intersections.append(float(yIntersect))
+
+    if intersections:
+        return max(intersections)
+
+    nearestIndex = int(np.argmin(np.abs(outline[:, 0] - xRef)))
+    fallbackY = float(outline[nearestIndex, 1])
+    return max(fallbackY, float(np.max(outline[:, 1])))
 
 
 def build_frame_edge_samples(
@@ -299,6 +328,9 @@ def draw_frames(
     frameOffsetYUm: float,
     topMm: float,
     bottomMm: float,
+    topReferenceY: float,
+    bottomReferenceY: float,
+    lineColor: str,
 ) -> None:
     completeFrames = build_complete_frame_rectangles(
         outline=outline,
@@ -308,6 +340,8 @@ def draw_frames(
         frameOffsetYUm=frameOffsetYUm,
         topMm=topMm,
         bottomMm=bottomMm,
+        topReferenceY=topReferenceY,
+        bottomReferenceY=bottomReferenceY,
     )
     frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
 
@@ -327,7 +361,7 @@ def draw_frames(
         ax.plot(
             [pointA[0], pointB[0]],
             [pointA[1], pointB[1]],
-            color="#f4a3a3",
+            color=lineColor,
             linewidth=0.9,
             linestyle=(0, (4, 4)),
             alpha=0.9,
@@ -345,6 +379,8 @@ def draw_dies(
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    topReferenceY: float,
+    lineColor: str,
 ) -> None:
     completeDies = build_complete_die_rectangles(
         outline=outline,
@@ -355,6 +391,7 @@ def draw_dies(
         frameOffsetXUm=frameOffsetXUm,
         frameOffsetYUm=frameOffsetYUm,
         topMm=topMm,
+        topReferenceY=topReferenceY,
     )
     dieEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
 
@@ -374,7 +411,7 @@ def draw_dies(
         ax.plot(
             [pointA[0], pointB[0]],
             [pointA[1], pointB[1]],
-            color="#ececec",
+            color=lineColor,
             linewidth=0.6,
             linestyle="-",
             alpha=1.0,
@@ -390,15 +427,24 @@ def build_complete_rectangles(
     offsetYMm: float,
     topMm: float,
     bottomMm: float,
+    topReferenceY: float | None = None,
+    bottomReferenceY: float | None = None,
+    alignCenterX: bool = True,
 ) -> list[tuple[float, float, float, float]]:
     if tileWidthMm <= 0 or tileHeightMm <= 0:
         return []
 
     xMin, yMin = outline.min(axis=0)
     xMax, yMax = outline.max(axis=0)
+    if topReferenceY is None:
+        centerX = (xMin + xMax) / 2.0
+        topReferenceY = top_y_at_x(outline, centerX)
+    if bottomReferenceY is None:
+        bottomReferenceY = yMin
     outlinePath = MplPath(outline)
 
-    xOrigins = build_frame_origins(xMin, xMax, tileWidthMm, offsetXMm)
+    xGridOffset = offsetXMm - (tileWidthMm / 2.0 if alignCenterX else 0.0)
+    xOrigins = build_frame_origins(xMin, xMax, tileWidthMm, xGridOffset)
     yOrigins = build_frame_y_origins_from_top(
         yMin=yMin,
         yMax=yMax,
@@ -406,6 +452,8 @@ def build_complete_rectangles(
         topMm=topMm,
         offsetYMm=offsetYMm,
         bottomMm=bottomMm,
+        topReferenceY=topReferenceY,
+        bottomReferenceY=bottomReferenceY,
     )
     completeRects: list[tuple[float, float, float, float]] = []
 
@@ -433,6 +481,8 @@ def build_complete_frame_rectangles(
     frameOffsetYUm: float,
     topMm: float,
     bottomMm: float,
+    topReferenceY: float,
+    bottomReferenceY: float,
 ) -> list[tuple[float, float, float, float]]:
     stepXMm = stepXUm / 1000.0
     stepYMm = stepYUm / 1000.0
@@ -446,6 +496,9 @@ def build_complete_frame_rectangles(
         offsetYMm=frameOffsetYMm,
         topMm=topMm,
         bottomMm=bottomMm,
+        topReferenceY=topReferenceY,
+        bottomReferenceY=bottomReferenceY,
+        alignCenterX=True,
     )
 
 
@@ -458,6 +511,7 @@ def build_complete_die_rectangles(
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    topReferenceY: float,
 ) -> list[tuple[float, float, float, float]]:
     safeArrayX = max(int(arrayX), 1)
     safeArrayY = max(int(arrayY), 1)
@@ -473,6 +527,9 @@ def build_complete_die_rectangles(
         offsetYMm=frameOffsetYMm,
         topMm=topMm,
         bottomMm=0.0,
+        topReferenceY=topReferenceY,
+        bottomReferenceY=float(outline[:, 1].min()),
+        alignCenterX=True,
     )
 
 
@@ -484,6 +541,8 @@ def count_complete_frames(
     frameOffsetYUm: float,
     topMm: float,
     bottomMm: float,
+    topReferenceY: float,
+    bottomReferenceY: float,
 ) -> int:
     completeFrames = build_complete_frame_rectangles(
         outline=outline,
@@ -493,6 +552,8 @@ def count_complete_frames(
         frameOffsetYUm=frameOffsetYUm,
         topMm=topMm,
         bottomMm=bottomMm,
+        topReferenceY=topReferenceY,
+        bottomReferenceY=bottomReferenceY,
     )
     return len(completeFrames)
 
@@ -511,11 +572,18 @@ def render_figure(
     frameOffsetYUm: float,
     topMm: float,
     bottomMm: float,
+    topReferenceY: float,
+    bottomReferenceY: float,
     showContour: bool,
     showContourGrid: bool,
     showInfoPanel: bool,
     infoPanelText: str,
     signatureText: str,
+    frameLineColor: str,
+    dieLineColor: str,
+    effectiveEdgeColor: str,
+    waferEdgeColor: str,
+    contourGridColor: str,
 ) -> plt.Figure:
     radius = np.max(np.linalg.norm(waferOutline, axis=1))
     hasPoints = not pointsDf.empty
@@ -564,6 +632,8 @@ def render_figure(
         frameOffsetXUm,
         frameOffsetYUm,
         topMm,
+        topReferenceY,
+        dieLineColor,
     )
     draw_frames(
         ax,
@@ -574,10 +644,19 @@ def render_figure(
         frameOffsetYUm,
         topMm,
         bottomMm,
+        topReferenceY,
+        bottomReferenceY,
+        frameLineColor,
     )
-    ax.plot(waferOutline[:, 0], waferOutline[:, 1], color="black", linewidth=2.0, zorder=4)
+    ax.plot(waferOutline[:, 0], waferOutline[:, 1], color=waferEdgeColor, linewidth=2.0, zorder=4)
     if len(effectiveOutline) > 2:
-        ax.plot(effectiveOutline[:, 0], effectiveOutline[:, 1], color="#f4a3a3", linewidth=1.4, zorder=4)
+        ax.plot(
+            effectiveOutline[:, 0],
+            effectiveOutline[:, 1],
+            color=effectiveEdgeColor,
+            linewidth=1.4,
+            zorder=4,
+        )
 
     if hasPoints:
         for row in pointsDf.itertuples():
@@ -599,7 +678,7 @@ def render_figure(
     ax.set_ylabel("Y (mm)")
     ax.set_title(title)
     if showContourGrid:
-        ax.grid(True, color="#d9d9d9", linestyle="--", linewidth=0.6, alpha=0.9)
+        ax.grid(True, color=contourGridColor, linestyle="--", linewidth=0.6, alpha=0.9)
     else:
         ax.grid(False)
 
