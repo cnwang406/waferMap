@@ -331,7 +331,7 @@ outputPath.write_bytes(jpgBytes)
 colChart, colData = st.columns([1.4, 1.0])
 
 with colChart:
-    st.pyplot(figure, use_container_width=True)
+    st.pyplot(figure, width="stretch")
     st.download_button(
         label="下載 JPG",
         data=jpgBytes,
@@ -347,7 +347,7 @@ with colData:
     if hasExcelData:
         st.dataframe(
             calculatedDf[["siteX", "siteY", "thickness", "posXUm", "posYUm", "posXMm", "posYMm"]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:
