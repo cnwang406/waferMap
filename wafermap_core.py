@@ -46,10 +46,11 @@ def validate_parameters(
 ) -> None:
     if stepXUm <= 0 or stepYUm <= 0:
         raise ValueError("stepX 與 stepY 必須大於 0。")
-    if offsetXUm < 0 or offsetYUm < 0:
-        raise ValueError("offsetX 與 offsetY 必須大於或等於 0。")
-    if offsetXUm >= stepXUm or offsetYUm >= stepYUm:
-        raise ValueError("offsetX 必須小於 stepX，且 offsetY 必須小於 stepY。")
+    if abs(offsetXUm) > (stepXUm / 2.0) or abs(offsetYUm) > (stepYUm / 2.0):
+        raise ValueError(
+            "offsetX 與 offsetY 以 frame center 為 0,0，"
+            "其絕對值不可大於 stepX/2 與 stepY/2。"
+        )
     if diameterMm <= 0:
         raise ValueError("wafer diameter 必須大於 0。")
 
