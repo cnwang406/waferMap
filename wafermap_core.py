@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path as MplPath
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.ndimage import distance_transform_edt
 from scipy.interpolate import griddata
 
@@ -62,13 +63,13 @@ def build_wafer_outline(diameterMm: float, flatOption: str) -> np.ndarray:
         yJoin = -math.sqrt(max(radius**2 - halfWidth**2, 0.0))
         thetaLeft = math.atan2(yJoin, -halfWidth)
         thetaRight = math.atan2(yJoin, halfWidth)
-        arcAngles = np.linspace(thetaLeft, thetaRight + 2.0 * math.pi, 720)
+        arcAngles = np.linspace(thetaRight, thetaLeft + 2.0 * math.pi, 720)
         arc = np.column_stack((radius * np.cos(arcAngles), radius * np.sin(arcAngles)))
         notch = np.array(
             [
-                [halfWidth, yJoin],
-                [0.0, -radius + notchDepthMm],
                 [-halfWidth, yJoin],
+                [0.0, -radius + notchDepthMm],
+                [halfWidth, yJoin],
             ]
         )
         return np.vstack((arc, notch, arc[0]))
@@ -78,9 +79,9 @@ def build_wafer_outline(diameterMm: float, flatOption: str) -> np.ndarray:
     yFlat = -math.sqrt(max(radius**2 - halfFlat**2, 0.0))
     thetaLeft = math.atan2(yFlat, -halfFlat)
     thetaRight = math.atan2(yFlat, halfFlat)
-    arcAngles = np.linspace(thetaLeft, thetaRight + 2.0 * math.pi, 720)
+    arcAngles = np.linspace(thetaRight, thetaLeft + 2.0 * math.pi, 720)
     arc = np.column_stack((radius * np.cos(arcAngles), radius * np.sin(arcAngles)))
-    flat = np.array([[halfFlat, yFlat], [-halfFlat, yFlat]])
+    flat = np.array([[-halfFlat, yFlat], [halfFlat, yFlat]])
     return np.vstack((arc, flat, arc[0]))
 
 
@@ -593,6 +594,17 @@ def render_figure(
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#f8fbff")
 
+    def add_thickness_colorbar(mappable) -> None:
+        if showInfoPanel:
+            divider = make_axes_locatable(ax)
+            colorbarAxis = divider.append_axes("left", size="3.8%", pad=0.12)
+            colorbar = fig.colorbar(mappable, cax=colorbarAxis)
+            colorbar.ax.yaxis.set_ticks_position("left")
+            colorbar.ax.yaxis.set_label_position("left")
+        else:
+            colorbar = fig.colorbar(mappable, ax=ax, fraction=0.046, pad=0.04)
+        colorbar.set_label("Thickness (A)")
+
     if canRenderContour:
         gridX, gridY, gridZ = contourGrid
         contour = ax.contourf(
@@ -603,8 +615,7 @@ def render_figure(
             cmap="viridis",
             alpha=0.88,
         )
-        colorbar = fig.colorbar(contour, ax=ax, fraction=0.046, pad=0.04)
-        colorbar.set_label("Thickness (A)")
+        add_thickness_colorbar(contour)
 
     if hasPoints:
         scatter = ax.scatter(
@@ -619,8 +630,7 @@ def render_figure(
         )
 
         if not canRenderContour:
-            colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
-            colorbar.set_label("Thickness (A)")
+            add_thickness_colorbar(scatter)
 
     draw_dies(
         ax,

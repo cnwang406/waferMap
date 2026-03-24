@@ -21,6 +21,7 @@ by cnwang, 2026/03
 - Input wafer map parameters: `stepX`, `stepY`, `array X`, `array Y`, `top`, `bottom`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`, `edge exclude`
 - Convert site coordinates into absolute wafer coordinates
 - Draw wafer outline with `47.5 mm`, `57.5 mm`, or `notch`
+- For flat wafers, the outer circular edge is clipped by the flat segment (no extra circle shown outside flat)
 - Draw an inner effective wafer boundary using `edge exclude` (light red line)
 - Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
 - Draw die grid lines (lighter gray) using die size `stepX/arrayX` and `stepY/arrayY`
@@ -29,6 +30,7 @@ by cnwang, 2026/03
 - Frame bottom gap constraint: frame lowest edge must keep at least `bottom` distance from wafer bottom
 - Show only complete rectangular frames fully inside wafer; partial frame segments are hidden
 - Toggle contour display
+- Thickness colorbar is moved to the left side when right-side info panel is enabled (avoids overlap)
 - Render measurement point labels when Excel data exists
 - Toggle contour grid display (hidden by default, light gray when shown)
 - Optional info panel on the right side of wafer chart
@@ -135,5 +137,5 @@ streamlit run app.py
 - `total frames` in info panel counts only complete rectangular frames
 - `total dies` in info panel counts only complete die rectangles
 - frame vertical placement starts from top and goes downward
-- `frame bottom gap` in info panel is the distance from arranged frame bottom edge to effective wafer bottom edge, and it will not be smaller than `bottom`
+- `frame bottom gap` in info panel is the distance from arranged frame bottom edge to wafer bottom edge, and it will not be smaller than `bottom`
 - contour grid is optional and shown in light gray when enabled
