@@ -32,7 +32,6 @@ from wafermap_core import (
     collapse_duplicate_points,
     count_points_outside_outline,
     figure_to_jpg_bytes,
-    normalize_columns,
     render_figure,
     top_y_at_x,
     validate_parameters,
@@ -44,6 +43,189 @@ def sanitize_file_stem(rawText: str) -> str:
     cleanedText = re.sub(r"\s+", "_", cleanedText)
     cleanedText = cleanedText.strip("._")
     return cleanedText or "wafer_frame_preview"
+
+
+def normalize_parameter_name(rawText: object) -> str:
+    if pd.isna(rawText):
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", str(rawText).strip().lower())
+
+
+def parse_flat_value(rawValue: object) -> str | None:
+    text = str(rawValue).strip().lower()
+    if text in {"47.5", "47.5mm", "47.5 mm"}:
+        return "47.5 mm"
+    if text in {"57.5", "57.5mm", "57.5 mm"}:
+        return "57.5 mm"
+    if "notch" in text:
+        return "notch"
+    valueNumber = pd.to_numeric(pd.Series([rawValue]), errors="coerce").iloc[0]
+    if pd.notna(valueNumber):
+        if abs(float(valueNumber) - 47.5) < 0.5:
+            return "47.5 mm"
+        if abs(float(valueNumber) - 57.5) < 0.5:
+            return "57.5 mm"
+    return None
+
+
+def parse_measurement_table(rawSheetDf: pd.DataFrame) -> tuple[pd.DataFrame, str, str]:
+    if rawSheetDf.shape[1] < 3:
+        raise ValueError("Excel 至少需要 3 欄資料（X, Y, value）。")
+    if rawSheetDf.empty:
+        raise ValueError("Excel 目前沒有可用資料列。")
+
+    firstRow = rawSheetDf.iloc[0, :3]
+    firstTwoNumeric = pd.to_numeric(firstRow.iloc[:2], errors="coerce")
+    thirdNumeric = pd.to_numeric(pd.Series([firstRow.iloc[2]]), errors="coerce").iloc[0]
+
+    dataStartRow = 0
+    valueLabel = "thickness"
+    if firstTwoNumeric.isna().all():
+        dataStartRow = 1
+        valueHeader = str(firstRow.iloc[2]).strip()
+        if valueHeader:
+            valueLabel = valueHeader
+    elif pd.notna(firstTwoNumeric.iloc[0]) and pd.notna(firstTwoNumeric.iloc[1]) and pd.isna(thirdNumeric):
+        dataStartRow = 1
+        valueHeader = str(firstRow.iloc[2]).strip()
+        if valueHeader:
+            valueLabel = valueHeader
+
+    dataBlock = rawSheetDf.iloc[dataStartRow:, :3].copy()
+    dataBlock.columns = ["siteX", "siteY", "thickness"]
+    dataBlock = dataBlock.apply(pd.to_numeric, errors="coerce")
+    dataBlock = dataBlock.dropna(subset=["siteX", "siteY", "thickness"]).reset_index(drop=True)
+    if dataBlock.empty:
+        raise ValueError("找不到可用的數值資料列。請確認前三欄內容。")
+
+    hasFloatingCoord = (
+        ((dataBlock["siteX"] - dataBlock["siteX"].round()).abs() > 1e-9).any()
+        or ((dataBlock["siteY"] - dataBlock["siteY"].round()).abs() > 1e-9).any()
+    )
+    coordinateMode = "mm" if hasFloatingCoord else "index"
+    return dataBlock, valueLabel, coordinateMode
+
+
+def parse_parameter_overrides(rawSheetDf: pd.DataFrame) -> tuple[dict[str, object], bool]:
+    if rawSheetDf.shape[1] < 5:
+        return {}, False
+
+    parameterNameMap = {
+        "stepx": "stepXUm",
+        "stepy": "stepYUm",
+        "frameoffsetx": "frameOffsetXUm",
+        "frameoffsety": "frameOffsetYUm",
+        "arrayx": "arrayX",
+        "arrayy": "arrayY",
+        "top": "topMm",
+        "offsetx": "offsetXUm",
+        "offsety": "offsetYUm",
+        "diameter": "diameterMm",
+        "waferdiameter": "diameterMm",
+        "flat": "flatOption",
+        "edgeexclude": "edgeExcludeMm",
+        "bottom": "bottomMm",
+    }
+
+    overrides: dict[str, object] = {}
+    hasParameterData = False
+    for row in rawSheetDf.itertuples(index=False):
+        if len(row) < 5:
+            continue
+        rawName = row[3]
+        rawValue = row[4]
+        normalizedName = normalize_parameter_name(rawName)
+        targetKey = parameterNameMap.get(normalizedName)
+        if not targetKey or pd.isna(rawValue):
+            continue
+
+        hasParameterData = True
+        if targetKey == "flatOption":
+            flatValue = parse_flat_value(rawValue)
+            if flatValue is not None:
+                overrides[targetKey] = flatValue
+            continue
+
+        parsedValue = pd.to_numeric(pd.Series([rawValue]), errors="coerce").iloc[0]
+        if pd.isna(parsedValue):
+            continue
+        if targetKey in {"arrayX", "arrayY"}:
+            overrides[targetKey] = max(1, int(round(float(parsedValue))))
+        else:
+            overrides[targetKey] = float(parsedValue)
+
+    return overrides, hasParameterData
+
+
+def apply_parameter_overrides(overrides: dict[str, object]) -> bool:
+    changed = False
+    for key, value in overrides.items():
+        currentValue = st.session_state.get(key)
+        if isinstance(value, float) and isinstance(currentValue, (int, float)):
+            if abs(float(currentValue) - value) <= 1e-9:
+                continue
+        elif currentValue == value:
+            continue
+        st.session_state[key] = value
+        changed = True
+    return changed
+
+
+def build_parameter_rows(
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+    arrayX: int,
+    arrayY: int,
+    topMm: float,
+    offsetXUm: float,
+    offsetYUm: float,
+    diameterMm: float,
+    flatOption: str,
+    edgeExcludeMm: float,
+    bottomMm: float,
+) -> list[tuple[str, object]]:
+    return [
+        ("stepX", float(stepXUm)),
+        ("stepY", float(stepYUm)),
+        ("frameOffsetX", float(frameOffsetXUm)),
+        ("frameOffsetY", float(frameOffsetYUm)),
+        ("arrayX", int(arrayX)),
+        ("arrayY", int(arrayY)),
+        ("top", float(topMm)),
+        ("offsetX", float(offsetXUm)),
+        ("offsetY", float(offsetYUm)),
+        ("diameter", float(diameterMm)),
+        ("flat", flatOption),
+        ("edge exclude", float(edgeExcludeMm)),
+        ("bottom", float(bottomMm)),
+    ]
+
+
+def build_sheet_with_parameter_columns(
+    rawSheetDf: pd.DataFrame, parameterRows: list[tuple[str, object]]
+) -> pd.DataFrame:
+    outputDf = rawSheetDf.copy()
+    outputRows = max(len(outputDf), len(parameterRows) + 1)
+    outputDf = outputDf.reindex(range(outputRows))
+    while outputDf.shape[1] < 5:
+        outputDf[outputDf.shape[1]] = pd.NA
+    outputDf.iat[0, 3] = "parameter"
+    outputDf.iat[0, 4] = "value"
+    for rowIndex, (parameterName, parameterValue) in enumerate(parameterRows, start=1):
+        outputDf.iat[rowIndex, 3] = parameterName
+        outputDf.iat[rowIndex, 4] = parameterValue
+    return outputDf
+
+
+def build_excel_bytes(sheetTables: dict[str, pd.DataFrame]) -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for sheetName, sheetDf in sheetTables.items():
+            sheetDf.to_excel(writer, sheet_name=sheetName, index=False, header=False)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 def build_info_panel_text(
@@ -66,6 +248,8 @@ def build_info_panel_text(
     showContour: bool,
     contourStyle: str,
     showContourGrid: bool,
+    coordinateMode: str,
+    valueLabel: str,
     title: str,
     excelName: str,
 ) -> str:
@@ -75,6 +259,8 @@ def build_info_panel_text(
     lines = [
         f"title: {title}",
         f"contour data: {excelName}",
+        f"value: {valueLabel}",
+        f"coord mode: {coordinateMode}",
         "",
         f"frame W: {stepXUm:.1f} um",
         f"frame H: {stepYUm:.1f} um",
@@ -110,40 +296,64 @@ st.caption(
     f"by cnwang 2026/03.  v{version}"
 )
 
+defaultStateValues = {
+    "stepXUm": 10000.0,
+    "stepYUm": 10000.0,
+    "frameOffsetXUm": 0.0,
+    "frameOffsetYUm": 0.0,
+    "arrayX": 1,
+    "arrayY": 1,
+    "topMm": 10.0,
+    "offsetXUm": 0.0,
+    "offsetYUm": 0.0,
+    "diameterMm": defaultDiameterMm,
+    "flatOption": "57.5 mm",
+    "edgeExcludeMm": 2.5,
+    "bottomMm": 3.0,
+}
+for stateKey, defaultValue in defaultStateValues.items():
+    if stateKey not in st.session_state:
+        st.session_state[stateKey] = defaultValue
+
 with st.sidebar:
     st.header("輸入參數")
     with st.container(border=True):
         st.caption("Frame Step / Frame Offset")
         columnA, columnB = st.columns(2)
         with columnA:
-            stepXUm = st.number_input("stepX (um)", min_value=0.0, value=10000.0, step=100.0)
-            frameOffsetXUm = st.number_input("frame offset X (um)", value=0.0, step=10.0)
+            stepXUm = st.number_input("stepX (um)", min_value=0.0, step=100.0, key="stepXUm")
+            frameOffsetXUm = st.number_input("frame offset X (um)", step=10.0, key="frameOffsetXUm")
         with columnB:
-            stepYUm = st.number_input("stepY (um)", min_value=0.0, value=10000.0, step=100.0)
-            frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
+            stepYUm = st.number_input("stepY (um)", min_value=0.0, step=100.0, key="stepYUm")
+            frameOffsetYUm = st.number_input("frame offset Y (um)", step=10.0, key="frameOffsetYUm")
         arrayColA, arrayColB = st.columns(2)
         with arrayColA:
-            arrayX = st.number_input("arrayX", min_value=1, value=1, step=1, format="%d")
+            arrayX = st.number_input("arrayX", min_value=1, step=1, format="%d", key="arrayX")
         with arrayColB:
-            arrayY = st.number_input("arrayY", min_value=1, value=1, step=1, format="%d")
-        topMm = st.number_input("top (mm)", min_value=0.0, value=10.0, step=0.1)
+            arrayY = st.number_input("arrayY", min_value=1, step=1, format="%d", key="arrayY")
+        topMm = st.number_input("top (mm)", min_value=0.0, step=0.1, key="topMm")
 
     with st.container(border=True):
         st.caption("Site Offset")
-        offsetXUm = st.number_input("offsetX (um)", min_value=0.0, value=0.0, step=10.0)
-        offsetYUm = st.number_input("offsetY (um)", min_value=0.0, value=0.0, step=10.0)
+        offsetXUm = st.number_input("offsetX (um)", min_value=0.0, step=10.0, key="offsetXUm")
+        offsetYUm = st.number_input("offsetY (um)", min_value=0.0, step=10.0, key="offsetYUm")
 
     with st.container(border=True):
         st.caption("Wafer")
         diameterMm = st.number_input(
             "wafer diameter (mm)",
             min_value=1.0,
-            value=defaultDiameterMm,
             step=1.0,
+            key="diameterMm",
         )
-        flatOption = st.selectbox("flat", list(flatOptions.keys()), index=1)
-        edgeExcludeMm = st.number_input("edge exclude (mm)", min_value=0.0, value=2.5, step=0.1)
-        bottomMm = st.number_input("bottom (mm)", min_value=0.0, value=3.0, step=0.1)
+        flatDefaultIndex = list(flatOptions.keys()).index(
+            st.session_state.get("flatOption", "57.5 mm")
+        )
+        flatOption = st.selectbox(
+            "flat", list(flatOptions.keys()), index=flatDefaultIndex, key="flatOption"
+        )
+        edgeExcludeMm = st.number_input("edge exclude (mm)", min_value=0.0, step=0.1, key="edgeExcludeMm")
+        bottomMm = st.number_input("bottom (mm)", min_value=0.0, step=0.1, key="bottomMm")
 
     with st.container(border=True):
         st.caption("Display / Title")
@@ -163,6 +373,96 @@ with st.sidebar:
         inputTitle = st.text_input("title", value="wafer_frame_preview")
 
 uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
+
+plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
+calculatedDf = pd.DataFrame()
+duplicateCount = 0
+outsideCount = 0
+contourGrid = None
+hasExcelData = uploadedFile is not None
+outputStem = "wafer_frame_preview"
+title = inputTitle.strip() if inputTitle.strip() else "wafer_frame_preview"
+outputStem = sanitize_file_stem(title)
+excelNameForInfo = "(none)"
+valueLabel = "thickness"
+coordinateMode = "index"
+sheetName = ""
+parameterTemplateBytes: bytes | None = None
+parameterTemplatePath: Path | None = None
+missingParameterColumns = False
+
+if hasExcelData:
+    fileBytes = uploadedFile.getvalue()
+    fileName = Path(uploadedFile.name)
+    excelNameForInfo = fileName.name
+    outputStem = fileName.stem
+    title = fileName.stem
+
+    try:
+        excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
+    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+        st.error(f"無法讀取 Excel 檔案: {exc}")
+        st.stop()
+
+    sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
+
+    try:
+        rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
+    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+        st.error(f"資料格式錯誤: {exc}")
+        st.stop()
+
+    parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
+    parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
+    if st.session_state.get("parameterSourceToken") != parameterSourceToken:
+        st.session_state["parameterSourceToken"] = parameterSourceToken
+        if parameterOverrides and apply_parameter_overrides(parameterOverrides):
+            st.rerun()
+
+    missingParameterColumns = not hasParameterColumns
+    if missingParameterColumns:
+        parameterRows = build_parameter_rows(
+            stepXUm=stepXUm,
+            stepYUm=stepYUm,
+            frameOffsetXUm=frameOffsetXUm,
+            frameOffsetYUm=frameOffsetYUm,
+            arrayX=int(arrayX),
+            arrayY=int(arrayY),
+            topMm=topMm,
+            offsetXUm=offsetXUm,
+            offsetYUm=offsetYUm,
+            diameterMm=diameterMm,
+            flatOption=flatOption,
+            edgeExcludeMm=edgeExcludeMm,
+            bottomMm=bottomMm,
+        )
+        selectedSheetWithParameters = build_sheet_with_parameter_columns(rawSheetDf, parameterRows)
+        allSheetTables = {
+            name: pd.read_excel(io.BytesIO(fileBytes), sheet_name=name, header=None)
+            for name in excelFile.sheet_names
+        }
+        allSheetTables[sheetName] = selectedSheetWithParameters
+        parameterTemplateBytes = build_excel_bytes(allSheetTables)
+        parameterTemplatePath = Path.cwd() / f"{fileName.stem}_with_params.xlsx"
+        parameterTemplatePath.write_bytes(parameterTemplateBytes)
+
+    try:
+        sourceDf, valueLabel, coordinateMode = parse_measurement_table(rawSheetDf)
+    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+        st.error(f"資料格式錯誤: {exc}")
+        st.stop()
+
+    calculatedDf = calculate_positions(
+        sourceDf,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        offsetXUm=offsetXUm,
+        offsetYUm=offsetYUm,
+        coordinateMode=coordinateMode,
+    )
+    plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
+else:
+    st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
 
 try:
     validate_parameters(stepXUm, stepYUm, offsetXUm, offsetYUm, diameterMm)
@@ -210,57 +510,10 @@ frameBottomGapMm = min((frame[1] for frame in completeFrames), default=float("na
 if totalFrames == 0:
     frameBottomGapMm = -1.0
 
-plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
-calculatedDf = pd.DataFrame()
-duplicateCount = 0
-outsideCount = 0
-contourGrid = None
-hasExcelData = uploadedFile is not None
-outputStem = "wafer_frame_preview"
-title = inputTitle.strip() if inputTitle.strip() else "wafer_frame_preview"
-outputStem = sanitize_file_stem(title)
-excelNameForInfo = "(none)"
-
 if hasExcelData:
-    fileBytes = uploadedFile.getvalue()
-    fileName = Path(uploadedFile.name)
-    excelNameForInfo = fileName.name
-    outputStem = fileName.stem
-    title = fileName.stem
-
-    try:
-        excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
-    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-        st.error(f"無法讀取 Excel 檔案: {exc}")
-        st.stop()
-
-    sheetName = st.selectbox("選擇工作表", excelFile.sheet_names)
-
-    try:
-        rawDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName)
-        sourceDf = normalize_columns(rawDf)
-        sourceDf = sourceDf.apply(pd.to_numeric, errors="raise")
-    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-        st.error(f"資料格式錯誤: {exc}")
-        st.stop()
-
-    if sourceDf.empty:
-        st.error("Excel 目前沒有可用資料列。")
-        st.stop()
-
-    calculatedDf = calculate_positions(
-        sourceDf,
-        stepXUm=stepXUm,
-        stepYUm=stepYUm,
-        offsetXUm=offsetXUm,
-        offsetYUm=offsetYUm,
-    )
-    plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
     outsideCount = count_points_outside_outline(plotDf, effectiveOutline)
     if showContour:
         contourGrid = build_interpolated_grid(plotDf, effectiveOutline)
-else:
-    st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
 
 showContourEffective = showContour and hasExcelData
 
@@ -269,6 +522,19 @@ if showContour and not hasExcelData:
 
 if hasExcelData:
     st.caption(f"已上傳 Excel，title 自動使用檔名: {title}")
+    if coordinateMode == "mm":
+        st.caption("已偵測到浮點座標：前兩欄視為 mm 絕對座標（wafer center = 0,0）。")
+    else:
+        st.caption("已偵測到整數座標：前兩欄視為 site index，使用 step/offset 計算位置。")
+    if missingParameterColumns and parameterTemplateBytes and parameterTemplatePath:
+        st.info("此 Excel 缺少 col4/col5 參數區，已自動產生可回用版本。")
+        st.download_button(
+            label="下載回填參數 Excel",
+            data=parameterTemplateBytes,
+            file_name=parameterTemplatePath.name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        st.caption(f"也已輸出檔案：{parameterTemplatePath.name}")
 
 if duplicateCount:
     st.warning(
@@ -301,6 +567,8 @@ infoPanelText = build_info_panel_text(
     showContour=showContourEffective,
     contourStyle=contourStyle,
     showContourGrid=showContourGrid,
+    coordinateMode=coordinateMode,
+    valueLabel=valueLabel,
     title=title,
     excelName=excelNameForInfo,
 )
@@ -311,6 +579,7 @@ figure = render_figure(
     effectiveOutline,
     title,
     contourGrid,
+    valueLabel=valueLabel,
     stepXUm=stepXUm,
     stepYUm=stepYUm,
     arrayX=int(arrayX),
@@ -354,8 +623,13 @@ with colChart:
 with colData:
     st.subheader("計算結果")
     if hasExcelData:
+        displayDf = calculatedDf[
+            ["siteX", "siteY", "thickness", "posXUm", "posYUm", "posXMm", "posYMm"]
+        ].rename(columns={"thickness": valueLabel})
+        if coordinateMode == "mm":
+            displayDf = displayDf.rename(columns={"siteX": "coordX(mm)", "siteY": "coordY(mm)"})
         st.dataframe(
-            calculatedDf[["siteX", "siteY", "thickness", "posXUm", "posYUm", "posXMm", "posYMm"]],
+            displayDf,
             width="stretch",
             hide_index=True,
         )

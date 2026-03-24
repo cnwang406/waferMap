@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path as MplPath
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.ndimage import distance_transform_edt
 from scipy.interpolate import griddata
 
@@ -142,12 +141,19 @@ def calculate_positions(
     stepYUm: float,
     offsetXUm: float,
     offsetYUm: float,
+    coordinateMode: str = "index",
 ) -> pd.DataFrame:
     result = df.copy()
-    result["posXUm"] = result["siteX"] * stepXUm + offsetXUm
-    result["posYUm"] = result["siteY"] * stepYUm + offsetYUm
-    result["posXMm"] = result["posXUm"] / 1000.0
-    result["posYMm"] = result["posYUm"] / 1000.0
+    if coordinateMode == "mm":
+        result["posXMm"] = result["siteX"]
+        result["posYMm"] = result["siteY"]
+        result["posXUm"] = result["posXMm"] * 1000.0
+        result["posYUm"] = result["posYMm"] * 1000.0
+    else:
+        result["posXUm"] = result["siteX"] * stepXUm + offsetXUm
+        result["posYUm"] = result["siteY"] * stepYUm + offsetYUm
+        result["posXMm"] = result["posXUm"] / 1000.0
+        result["posYMm"] = result["posYUm"] / 1000.0
     return result
 
 
@@ -565,6 +571,7 @@ def render_figure(
     effectiveOutline: np.ndarray,
     title: str,
     contourGrid: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
+    valueLabel: str,
     stepXUm: float,
     stepYUm: float,
     arrayX: int,
@@ -594,17 +601,12 @@ def render_figure(
     fig, ax = plt.subplots(figsize=(figureWidth, 8), dpi=200)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#f8fbff")
+    if showInfoPanel:
+        fig.subplots_adjust(right=0.74)
 
     def add_thickness_colorbar(mappable) -> None:
-        if showInfoPanel:
-            divider = make_axes_locatable(ax)
-            colorbarAxis = divider.append_axes("left", size="3.8%", pad=0.12)
-            colorbar = fig.colorbar(mappable, cax=colorbarAxis)
-            colorbar.ax.yaxis.set_ticks_position("left")
-            colorbar.ax.yaxis.set_label_position("left")
-        else:
-            colorbar = fig.colorbar(mappable, ax=ax, fraction=0.046, pad=0.04)
-        colorbar.set_label("Thickness (A)")
+        colorbar = fig.colorbar(mappable, ax=ax, fraction=0.046, pad=0.04)
+        colorbar.set_label(valueLabel)
 
     if canRenderContour:
         gridX, gridY, gridZ = contourGrid
@@ -733,11 +735,10 @@ def render_figure(
         ax.grid(False)
 
     if showInfoPanel and infoPanelText:
-        ax.text(
-            1.03,
-            0.98,
+        fig.text(
+            0.77,
+            0.96,
             infoPanelText,
-            transform=ax.transAxes,
             ha="left",
             va="top",
             fontsize=8.8,
