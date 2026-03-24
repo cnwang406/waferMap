@@ -22,6 +22,7 @@ import pandas as pd
 import streamlit as st
 from wafermap_core import (
     build_complete_frame_rectangles,
+    build_complete_die_rectangles,
     build_effective_outline,
     defaultDiameterMm,
     flatOptions,
@@ -47,10 +48,14 @@ def sanitize_file_stem(rawText: str) -> str:
 def build_info_panel_text(
     stepXUm: float,
     stepYUm: float,
+    arrayX: int,
+    arrayY: int,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    bottomMm: float,
     totalFrames: int,
+    totalDies: int,
     frameBottomGapMm: float,
     offsetXUm: float,
     offsetYUm: float,
@@ -71,10 +76,14 @@ def build_info_panel_text(
         "",
         f"frame W: {stepXUm:.1f} um",
         f"frame H: {stepYUm:.1f} um",
+        f"array X: {arrayX}",
+        f"array Y: {arrayY}",
         f"frameOffsetX: {frameOffsetXUm:.1f} um",
         f"frameOffsetY: {frameOffsetYUm:.1f} um",
         f"top: {topMm:.2f} mm",
+        f"bottom: {bottomMm:.2f} mm",
         f"total frames: {totalFrames}",
+        f"total dies: {totalDies}",
         f"frame bottom gap: {bottomGapText}",
         "",
         f"site offset X: {offsetXUm:.1f} um",
@@ -109,6 +118,11 @@ with st.sidebar:
         with columnB:
             stepYUm = st.number_input("stepY (um)", min_value=0.0, value=10000.0, step=100.0)
             frameOffsetYUm = st.number_input("frame offset Y (um)", value=0.0, step=10.0)
+        arrayColA, arrayColB = st.columns(2)
+        with arrayColA:
+            arrayX = st.number_input("array X", min_value=1, value=1, step=1, format="%d")
+        with arrayColB:
+            arrayY = st.number_input("array Y", min_value=1, value=1, step=1, format="%d")
         topMm = st.number_input("top (mm)", min_value=0.0, value=10.0, step=0.1)
 
     with st.container(border=True):
@@ -126,6 +140,7 @@ with st.sidebar:
         )
         flatOption = st.selectbox("flat", list(flatOptions.keys()), index=1)
         edgeExcludeMm = st.number_input("edge exclude (mm)", min_value=0.0, value=2.5, step=0.1)
+        bottomMm = st.number_input("bottom (mm)", min_value=0.0, value=3.0, step=0.1)
 
     with st.container(border=True):
         st.caption("Display / Title")
@@ -155,8 +170,20 @@ completeFrames = build_complete_frame_rectangles(
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
     topMm=topMm,
+    bottomMm=bottomMm,
 )
 totalFrames = len(completeFrames)
+completeDies = build_complete_die_rectangles(
+    outline=effectiveOutline,
+    stepXUm=stepXUm,
+    stepYUm=stepYUm,
+    arrayX=int(arrayX),
+    arrayY=int(arrayY),
+    frameOffsetXUm=frameOffsetXUm,
+    frameOffsetYUm=frameOffsetYUm,
+    topMm=topMm,
+)
+totalDies = len(completeDies)
 frameBottomGapMm = min((frame[1] for frame in completeFrames), default=float("nan")) - float(
     effectiveOutline[:, 1].min()
 )
@@ -237,10 +264,14 @@ if showContourEffective and contourGrid is None:
 infoPanelText = build_info_panel_text(
     stepXUm=stepXUm,
     stepYUm=stepYUm,
+    arrayX=int(arrayX),
+    arrayY=int(arrayY),
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
     topMm=topMm,
+    bottomMm=bottomMm,
     totalFrames=totalFrames,
+    totalDies=totalDies,
     frameBottomGapMm=frameBottomGapMm,
     offsetXUm=offsetXUm,
     offsetYUm=offsetYUm,
@@ -261,9 +292,12 @@ figure = render_figure(
     contourGrid,
     stepXUm=stepXUm,
     stepYUm=stepYUm,
+    arrayX=int(arrayX),
+    arrayY=int(arrayY),
     frameOffsetXUm=frameOffsetXUm,
     frameOffsetYUm=frameOffsetYUm,
     topMm=topMm,
+    bottomMm=bottomMm,
     showContour=showContourEffective,
     showContourGrid=showContourGrid,
     showInfoPanel=showInfoPanel,

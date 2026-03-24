@@ -18,19 +18,23 @@ by cnwang, 2026/03
 - No Excel: render wafer outline + frame-only preview
 - With Excel: render points and optional contour
 - Sidebar parameters are arranged in 4 boxed sections
-- Input wafer map parameters: `stepX`, `stepY`, `top`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`, `edge exclude`
+- Input wafer map parameters: `stepX`, `stepY`, `array X`, `array Y`, `top`, `bottom`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`, `edge exclude`
 - Convert site coordinates into absolute wafer coordinates
 - Draw wafer outline with `47.5 mm`, `57.5 mm`, or `notch`
 - Draw an inner effective wafer boundary using `edge exclude` (light red line)
 - Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
+- Draw die grid lines (lighter gray) using die size `stepX/arrayX` and `stepY/arrayY`
+- Draw complete dies in regions between frame area and wafer edge when full die fits
 - Frame vertical placement starts from wafer top minus `top`, then arranged downward
+- Frame bottom gap constraint: frame lowest edge must keep at least `bottom` distance from wafer bottom
 - Show only complete rectangular frames fully inside wafer; partial frame segments are hidden
 - Toggle contour display
 - Render measurement point labels when Excel data exists
 - Toggle contour grid display (hidden by default, light gray when shown)
 - Optional info panel on the right side of wafer chart
 - Info panel includes `total frames` (count of complete frames)
-- Info panel includes `edge exclude`, `top`, and `frame bottom gap` (mm)
+- Info panel includes `total dies` (count of complete dies)
+- Info panel includes `edge exclude`, `top`, `bottom`, and `frame bottom gap` (mm)
 - Bottom-edge signature text: `by cnwang {VERSION}`
 - Title input supported; when Excel is uploaded, title automatically uses Excel filename
 - Export chart as `.jpg`
@@ -53,7 +57,10 @@ If you upload Excel, it must contain these columns:
 | --- | --- | --- |
 | `stepX` | Frame width | um |
 | `stepY` | Frame height | um |
+| `array X` | Number of dies per frame in X direction | count |
+| `array Y` | Number of dies per frame in Y direction | count |
 | `top` | Start frame placement from wafer top minus this value | mm |
+| `bottom` | Minimum allowed frame-bottom gap from wafer bottom (default `3.0`) | mm |
 | `frame offset X` | Frame grid X offset | um |
 | `frame offset Y` | Frame grid Y offset | um |
 | `offsetX` | Site offset X from frame lower-left origin | um |
@@ -72,6 +79,7 @@ Rules:
 - `offsetY < stepY`
 - default wafer diameter is `150 mm`
 - default `top` is `10 mm`
+- default `bottom` is `3 mm`
 - default `edge exclude` is `2.5 mm`
 - contour range, outside-wafer checks, and complete-frame checks are based on the effective (edge-excluded) wafer boundary
 
@@ -116,11 +124,16 @@ streamlit run app.py
 
 - `thickness` uses unit `A`
 - `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y` use unit `um`
+- `array X` and `array Y` are unitless die counts per frame
 - `wafer diameter`, `top`, `edge exclude`, and flat size use unit `mm`
 - `notch` is currently drawn as an approximate V-notch
 - frame lines are light red dashed lines
+- die grid lines are lighter gray lines
+- die size is derived by `dieW = stepX / arrayX`, `dieH = stepY / arrayY`
+- complete dies can be drawn outside frame area if they still fully fit inside effective wafer boundary
 - only fully complete rectangular frames are drawn
 - `total frames` in info panel counts only complete rectangular frames
+- `total dies` in info panel counts only complete die rectangles
 - frame vertical placement starts from top and goes downward
-- `frame bottom gap` in info panel is the distance from arranged frame bottom edge to effective wafer bottom edge
+- `frame bottom gap` in info panel is the distance from arranged frame bottom edge to effective wafer bottom edge, and it will not be smaller than `bottom`
 - contour grid is optional and shown in light gray when enabled

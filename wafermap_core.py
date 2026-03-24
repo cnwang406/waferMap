@@ -225,22 +225,25 @@ def build_frame_origins(
 def build_frame_y_origins_from_top(
     yMin: float,
     yMax: float,
-    stepYMm: float,
+    pitchMm: float,
     topMm: float,
-    frameOffsetYMm: float,
+    offsetYMm: float,
+    bottomMm: float,
 ) -> np.ndarray:
-    if stepYMm <= 0:
+    if pitchMm <= 0:
         return np.array([])
 
-    topEdgeStart = yMax - topMm - frameOffsetYMm
-    maxRows = int(math.ceil((yMax - yMin + topMm + abs(frameOffsetYMm)) / stepYMm)) + 5
+    topEdgeStart = yMax - topMm - offsetYMm
+    maxRows = int(math.ceil((yMax - yMin + topMm + abs(offsetYMm)) / pitchMm)) + 8
     yOrigins: list[float] = []
 
     for rowIndex in range(maxRows):
-        yTop = topEdgeStart - rowIndex * stepYMm
-        yOrigin = yTop - stepYMm
+        yTop = topEdgeStart - rowIndex * pitchMm
+        yOrigin = yTop - pitchMm
         if yOrigin > yMax:
             continue
+        if yOrigin < yMin + bottomMm:
+            break
         if yTop < yMin:
             break
         yOrigins.append(yOrigin)
@@ -295,6 +298,7 @@ def draw_frames(
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    bottomMm: float,
 ) -> None:
     completeFrames = build_complete_frame_rectangles(
         outline=outline,
@@ -303,6 +307,7 @@ def draw_frames(
         frameOffsetXUm=frameOffsetXUm,
         frameOffsetYUm=frameOffsetYUm,
         topMm=topMm,
+        bottomMm=bottomMm,
     )
     frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
 
@@ -330,6 +335,96 @@ def draw_frames(
         )
 
 
+def draw_dies(
+    ax: plt.Axes,
+    outline: np.ndarray,
+    stepXUm: float,
+    stepYUm: float,
+    arrayX: int,
+    arrayY: int,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+    topMm: float,
+) -> None:
+    completeDies = build_complete_die_rectangles(
+        outline=outline,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        arrayX=arrayX,
+        arrayY=arrayY,
+        frameOffsetXUm=frameOffsetXUm,
+        frameOffsetYUm=frameOffsetYUm,
+        topMm=topMm,
+    )
+    dieEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+
+    for xOrigin, yOrigin, xRight, yTop in completeDies:
+        corners = [
+            (xOrigin, yOrigin),
+            (xRight, yOrigin),
+            (xRight, yTop),
+            (xOrigin, yTop),
+        ]
+        for index in range(4):
+            pointA = corners[index]
+            pointB = corners[(index + 1) % 4]
+            dieEdges.add(canonical_edge_key(pointA, pointB))
+
+    for pointA, pointB in sorted(dieEdges):
+        ax.plot(
+            [pointA[0], pointB[0]],
+            [pointA[1], pointB[1]],
+            color="#ececec",
+            linewidth=0.6,
+            linestyle="-",
+            alpha=1.0,
+            zorder=1.6,
+        )
+
+
+def build_complete_rectangles(
+    outline: np.ndarray,
+    tileWidthMm: float,
+    tileHeightMm: float,
+    offsetXMm: float,
+    offsetYMm: float,
+    topMm: float,
+    bottomMm: float,
+) -> list[tuple[float, float, float, float]]:
+    if tileWidthMm <= 0 or tileHeightMm <= 0:
+        return []
+
+    xMin, yMin = outline.min(axis=0)
+    xMax, yMax = outline.max(axis=0)
+    outlinePath = MplPath(outline)
+
+    xOrigins = build_frame_origins(xMin, xMax, tileWidthMm, offsetXMm)
+    yOrigins = build_frame_y_origins_from_top(
+        yMin=yMin,
+        yMax=yMax,
+        pitchMm=tileHeightMm,
+        topMm=topMm,
+        offsetYMm=offsetYMm,
+        bottomMm=bottomMm,
+    )
+    completeRects: list[tuple[float, float, float, float]] = []
+
+    for xOrigin in xOrigins:
+        xRight = xOrigin + tileWidthMm
+        if xRight < xMin or xOrigin > xMax:
+            continue
+
+        for yOrigin in yOrigins:
+            yTop = yOrigin + tileHeightMm
+            if yTop < yMin or yOrigin > yMax:
+                continue
+            if not is_complete_frame_inside(outlinePath, xOrigin, yOrigin, tileWidthMm, tileHeightMm):
+                continue
+            completeRects.append((xOrigin, yOrigin, xRight, yTop))
+
+    return completeRects
+
+
 def build_complete_frame_rectangles(
     outline: np.ndarray,
     stepXUm: float,
@@ -337,43 +432,48 @@ def build_complete_frame_rectangles(
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    bottomMm: float,
 ) -> list[tuple[float, float, float, float]]:
     stepXMm = stepXUm / 1000.0
     stepYMm = stepYUm / 1000.0
     frameOffsetXMm = frameOffsetXUm / 1000.0
     frameOffsetYMm = frameOffsetYUm / 1000.0
-    if stepXMm <= 0 or stepYMm <= 0:
-        return []
-
-    xMin, yMin = outline.min(axis=0)
-    xMax, yMax = outline.max(axis=0)
-    outlinePath = MplPath(outline)
-
-    xOrigins = build_frame_origins(xMin, xMax, stepXMm, frameOffsetXMm)
-    yOrigins = build_frame_y_origins_from_top(
-        yMin=yMin,
-        yMax=yMax,
-        stepYMm=stepYMm,
+    return build_complete_rectangles(
+        outline=outline,
+        tileWidthMm=stepXMm,
+        tileHeightMm=stepYMm,
+        offsetXMm=frameOffsetXMm,
+        offsetYMm=frameOffsetYMm,
         topMm=topMm,
-        frameOffsetYMm=frameOffsetYMm,
+        bottomMm=bottomMm,
     )
-    completeFrames: list[tuple[float, float, float, float]] = []
 
-    for xOrigin in xOrigins:
-        xRight = xOrigin + stepXMm
-        if xRight < xMin or xOrigin > xMax:
-            continue
 
-        for yOrigin in yOrigins:
-            yTop = yOrigin + stepYMm
-            if yTop < yMin or yOrigin > yMax:
-                continue
-            if not is_complete_frame_inside(outlinePath, xOrigin, yOrigin, stepXMm, stepYMm):
-                continue
-
-            completeFrames.append((xOrigin, yOrigin, xRight, yTop))
-
-    return completeFrames
+def build_complete_die_rectangles(
+    outline: np.ndarray,
+    stepXUm: float,
+    stepYUm: float,
+    arrayX: int,
+    arrayY: int,
+    frameOffsetXUm: float,
+    frameOffsetYUm: float,
+    topMm: float,
+) -> list[tuple[float, float, float, float]]:
+    safeArrayX = max(int(arrayX), 1)
+    safeArrayY = max(int(arrayY), 1)
+    dieWidthMm = (stepXUm / 1000.0) / safeArrayX
+    dieHeightMm = (stepYUm / 1000.0) / safeArrayY
+    frameOffsetXMm = frameOffsetXUm / 1000.0
+    frameOffsetYMm = frameOffsetYUm / 1000.0
+    return build_complete_rectangles(
+        outline=outline,
+        tileWidthMm=dieWidthMm,
+        tileHeightMm=dieHeightMm,
+        offsetXMm=frameOffsetXMm,
+        offsetYMm=frameOffsetYMm,
+        topMm=topMm,
+        bottomMm=0.0,
+    )
 
 
 def count_complete_frames(
@@ -383,6 +483,7 @@ def count_complete_frames(
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    bottomMm: float,
 ) -> int:
     completeFrames = build_complete_frame_rectangles(
         outline=outline,
@@ -391,6 +492,7 @@ def count_complete_frames(
         frameOffsetXUm=frameOffsetXUm,
         frameOffsetYUm=frameOffsetYUm,
         topMm=topMm,
+        bottomMm=bottomMm,
     )
     return len(completeFrames)
 
@@ -403,9 +505,12 @@ def render_figure(
     contourGrid: tuple[np.ndarray, np.ndarray, np.ndarray] | None,
     stepXUm: float,
     stepYUm: float,
+    arrayX: int,
+    arrayY: int,
     frameOffsetXUm: float,
     frameOffsetYUm: float,
     topMm: float,
+    bottomMm: float,
     showContour: bool,
     showContourGrid: bool,
     showInfoPanel: bool,
@@ -449,6 +554,17 @@ def render_figure(
             colorbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
             colorbar.set_label("Thickness (A)")
 
+    draw_dies(
+        ax,
+        effectiveOutline,
+        stepXUm,
+        stepYUm,
+        arrayX,
+        arrayY,
+        frameOffsetXUm,
+        frameOffsetYUm,
+        topMm,
+    )
     draw_frames(
         ax,
         effectiveOutline,
@@ -457,6 +573,7 @@ def render_figure(
         frameOffsetXUm,
         frameOffsetYUm,
         topMm,
+        bottomMm,
     )
     ax.plot(waferOutline[:, 0], waferOutline[:, 1], color="black", linewidth=2.0, zorder=4)
     if len(effectiveOutline) > 2:
