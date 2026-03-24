@@ -576,6 +576,7 @@ def render_figure(
     topReferenceY: float,
     bottomReferenceY: float,
     showContour: bool,
+    contourStyle: str,
     showContourGrid: bool,
     showInfoPanel: bool,
     infoPanelText: str,
@@ -607,15 +608,54 @@ def render_figure(
 
     if canRenderContour:
         gridX, gridY, gridZ = contourGrid
-        contour = ax.contourf(
-            gridX,
-            gridY,
-            gridZ,
-            levels=18,
-            cmap="viridis",
-            alpha=0.88,
-        )
-        add_thickness_colorbar(contour)
+        contourMappable = None
+        if contourStyle == "lines":
+            contourMappable = ax.contour(
+                gridX,
+                gridY,
+                gridZ,
+                levels=14,
+                cmap="viridis",
+                linewidths=1.0,
+                alpha=0.95,
+            )
+        elif contourStyle == "filled + lines":
+            contourMappable = ax.contourf(
+                gridX,
+                gridY,
+                gridZ,
+                levels=18,
+                cmap="viridis",
+                alpha=0.86,
+            )
+            ax.contour(
+                gridX,
+                gridY,
+                gridZ,
+                levels=14,
+                colors="#2a2a2a",
+                linewidths=0.55,
+                alpha=0.55,
+            )
+        elif contourStyle == "heatmap":
+            contourMappable = ax.imshow(
+                gridZ,
+                extent=(float(np.nanmin(gridX)), float(np.nanmax(gridX)), float(np.nanmin(gridY)), float(np.nanmax(gridY))),
+                origin="lower",
+                cmap="viridis",
+                alpha=0.88,
+                interpolation="bilinear",
+            )
+        else:
+            contourMappable = ax.contourf(
+                gridX,
+                gridY,
+                gridZ,
+                levels=18,
+                cmap="viridis",
+                alpha=0.88,
+            )
+        add_thickness_colorbar(contourMappable)
 
     if hasPoints:
         scatter = ax.scatter(

@@ -64,6 +64,7 @@ def build_info_panel_text(
     flatOption: str,
     edgeExcludeMm: float,
     showContour: bool,
+    contourStyle: str,
     showContourGrid: bool,
     title: str,
     excelName: str,
@@ -95,6 +96,7 @@ def build_info_panel_text(
         f"edge exclude: {edgeExcludeMm:.2f} mm",
         "",
         f"contour map: {contourText}",
+        f"contour style: {contourStyle}",
         f"contour grid: {gridText}",
     ]
     return "\n".join(lines)
@@ -146,6 +148,11 @@ with st.sidebar:
     with st.container(border=True):
         st.caption("Display / Title")
         showContour = st.checkbox("顯示 contour", value=True)
+        contourStyle = st.selectbox(
+            "contour style",
+            ["filled", "lines", "filled + lines", "heatmap"],
+            index=0,
+        )
         showContourGrid = st.checkbox("顯示 contour grid", value=False)
         showInfoPanel = st.checkbox("右側顯示參數資訊", value=False)
         frameLineColor = st.color_picker("frame line color", value="#f4a3a3")
@@ -292,6 +299,7 @@ infoPanelText = build_info_panel_text(
     flatOption=flatOption,
     edgeExcludeMm=edgeExcludeMm,
     showContour=showContourEffective,
+    contourStyle=contourStyle,
     showContourGrid=showContourGrid,
     title=title,
     excelName=excelNameForInfo,
@@ -314,6 +322,7 @@ figure = render_figure(
     topReferenceY=topReferenceY,
     bottomReferenceY=bottomReferenceY,
     showContour=showContourEffective,
+    contourStyle=contourStyle,
     showContourGrid=showContourGrid,
     showInfoPanel=showInfoPanel,
     infoPanelText=infoPanelText,
