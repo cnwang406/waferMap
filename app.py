@@ -274,8 +274,8 @@ def build_info_panel_text(
         f"total dies: {totalDies}",
         f"frame bottom gap: {bottomGapText}",
         "",
-        f"site offset X (center): {offsetXUm:.1f} um",
-        f"site offset Y (center): {offsetYUm:.1f} um",
+        f"site offset X (left-bottom): {offsetXUm:.1f} um",
+        f"site offset Y (left-bottom): {offsetYUm:.1f} um",
         "",
         f"diameter: {diameterMm:.1f} mm",
         f"flat: {flatOption}",
@@ -367,8 +367,12 @@ with st.sidebar:
 
     with st.container(border=True):
         st.caption("Site Offset")
-        offsetXUm = st.number_input("offsetX from frame center (um)", step=10.0, key="offsetXUm")
-        offsetYUm = st.number_input("offsetY from frame center (um)", step=10.0, key="offsetYUm")
+        offsetXUm = st.number_input(
+            "offsetX from frame left-bottom (um)", min_value=0.0, step=10.0, key="offsetXUm"
+        )
+        offsetYUm = st.number_input(
+            "offsetY from frame left-bottom (um)", min_value=0.0, step=10.0, key="offsetYUm"
+        )
 
     with st.container(border=True):
         st.caption("Wafer")
