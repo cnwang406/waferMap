@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-version = "1.1"
+version = "1.2"
 appDescription = f"""Wafer Contour Viewer
 
 by cnwang 2026/03.  v{version}
@@ -426,8 +426,6 @@ missingParameterColumns = False
 
 if hasExcelData:
     excelNameForInfo = fileName.name
-    outputStem = fileName.stem
-    title = fileName.stem
 
     missingParameterColumns = not hasParameterColumns
     if missingParameterColumns:
@@ -476,7 +474,7 @@ if hasExcelData:
     )
     plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
 else:
-    st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
+    pass
 
 try:
     validate_parameters(stepXUm, stepYUm, offsetXUm, offsetYUm, diameterMm)
@@ -531,35 +529,11 @@ if hasExcelData:
 
 showContourEffective = showContour and hasExcelData
 
-if showContour and not hasExcelData:
-    st.caption("未提供 Excel，contour 已自動關閉。")
-
-if hasExcelData:
-    st.caption(f"已上傳 Excel，title 自動使用檔名: {title}")
-    if coordinateMode == "mm":
-        st.caption("已偵測到浮點座標：前兩欄視為 mm 絕對座標（wafer center = 0,0）。")
-    else:
-        st.caption("已偵測到整數座標：前兩欄視為 site index，使用 step/offset 計算位置。")
-    if missingParameterColumns and parameterTemplateBytes and parameterTemplatePath:
-        st.info("此 Excel 缺少 col4/col5 參數區，已自動產生可回用版本。")
-        st.download_button(
-            label="下載回填參數 Excel",
-            data=parameterTemplateBytes,
-            file_name=parameterTemplatePath.name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        st.caption(f"也已輸出檔案：{parameterTemplatePath.name}")
-
-if duplicateCount:
-    st.warning(
-        f"偵測到 {duplicateCount} 筆重複座標，繪圖時已先對相同座標的 thickness 取平均。"
-    )
-
-if outsideCount:
-    st.warning(f"有 {outsideCount} 個量測點落在 wafer 外框之外，請確認 step/offset 或來源資料。")
-
-if showContourEffective and contourGrid is None:
-    st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
+coordinateModeText = (
+    "已偵測到浮點座標：前兩欄視為 mm 絕對座標（wafer center = 0,0）。"
+    if coordinateMode == "mm"
+    else "已偵測到整數座標：前兩欄視為 site index，使用 step/offset 計算位置。"
+)
 
 infoPanelText = build_info_panel_text(
     stepXUm=stepXUm,
@@ -631,6 +605,30 @@ with colChart:
         mime="image/jpeg",
     )
     st.success(f"JPG 已輸出為 {outputPath.name}")
+    if not hasExcelData:
+        st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
+    if showContour and not hasExcelData:
+        st.caption("未提供 Excel，contour 已自動關閉。")
+    if hasExcelData:
+        st.caption(f"已上傳 Excel，title 使用左側輸入: {title}")
+        st.caption(coordinateModeText)
+        if missingParameterColumns and parameterTemplateBytes and parameterTemplatePath:
+            st.info("此 Excel 缺少 col4/col5 參數區，已自動產生可回用版本。")
+            st.download_button(
+                label="下載回填參數 Excel",
+                data=parameterTemplateBytes,
+                file_name=parameterTemplatePath.name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            st.caption(f"也已輸出檔案：{parameterTemplatePath.name}")
+    if duplicateCount:
+        st.warning(
+            f"偵測到 {duplicateCount} 筆重複座標，繪圖時已先對相同座標的 thickness 取平均。"
+        )
+    if outsideCount:
+        st.warning(f"有 {outsideCount} 個量測點落在 wafer 外框之外，請確認 step/offset 或來源資料。")
+    if showContourEffective and contourGrid is None:
+        st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
     if flatOption == "notch":
         st.caption("notch 外框使用 6 mm 寬、2 mm 深的近似 V-notch。")
 

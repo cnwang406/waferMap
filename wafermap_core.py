@@ -607,12 +607,12 @@ def render_figure(
     radius = np.max(np.linalg.norm(waferOutline, axis=1))
     hasPoints = not pointsDf.empty
     canRenderContour = showContour and contourGrid is not None
-    figureWidth = 10.8 if showInfoPanel else 8.0
+    figureWidth = 10.2 if showInfoPanel else 8.0
     fig, ax = plt.subplots(figsize=(figureWidth, 8), dpi=200)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#f8fbff")
     if showInfoPanel:
-        fig.subplots_adjust(right=0.74)
+        fig.subplots_adjust(right=0.64)
 
     def add_thickness_colorbar(mappable) -> None:
         colorbar = fig.colorbar(mappable, ax=ax, fraction=0.046, pad=0.04)
@@ -746,14 +746,14 @@ def render_figure(
 
     if showInfoPanel and infoPanelText:
         fig.text(
-            0.77,
+            0.66,
             0.50,
             infoPanelText,
             ha="left",
             va="center",
-            fontsize=8.8,
+            fontsize=8.0,
             color="#2f2f2f",
-            linespacing=1.35,
+            linespacing=1.25,
             bbox={
                 "boxstyle": "round,pad=0.35",
                 "fc": "white",
