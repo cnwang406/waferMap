@@ -151,8 +151,17 @@ def calculate_positions(
         result["posXUm"] = result["posXMm"] * 1000.0
         result["posYUm"] = result["posYMm"] * 1000.0
     else:
-        result["posXUm"] = result["siteX"] * stepXUm + offsetXUm - (stepXUm / 2.0)
-        result["posYUm"] = result["siteY"] * stepYUm + offsetYUm + indexBaseYUm
+        siteXIndex = result["siteX"].astype(float)
+        siteYIndex = result["siteY"].astype(float)
+
+        # Auto-detect 1-based integer site indexing and convert to 0-based.
+        if ((siteXIndex - np.round(siteXIndex)).abs() < 1e-9).all() and float(siteXIndex.min()) >= 1.0:
+            siteXIndex = siteXIndex - 1.0
+        if ((siteYIndex - np.round(siteYIndex)).abs() < 1e-9).all() and float(siteYIndex.min()) >= 1.0:
+            siteYIndex = siteYIndex - 1.0
+
+        result["posXUm"] = siteXIndex * stepXUm + offsetXUm - (stepXUm / 2.0)
+        result["posYUm"] = siteYIndex * stepYUm + offsetYUm + indexBaseYUm
         result["posXMm"] = result["posXUm"] / 1000.0
         result["posYMm"] = result["posYUm"] / 1000.0
     return result
