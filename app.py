@@ -315,8 +315,40 @@ for stateKey, defaultValue in defaultStateValues.items():
     if stateKey not in st.session_state:
         st.session_state[stateKey] = defaultValue
 
+uploadedFile = None
+hasExcelData = False
+fileBytes = b""
+fileName = Path("wafer_frame_preview.xlsx")
+excelFile: pd.ExcelFile | None = None
+sheetName = ""
+rawSheetDf = pd.DataFrame()
+hasParameterColumns = False
+
 with st.sidebar:
     st.header("輸入參數")
+    uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
+    hasExcelData = uploadedFile is not None
+    if hasExcelData:
+        fileBytes = uploadedFile.getvalue()
+        fileName = Path(uploadedFile.name)
+        try:
+            excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
+        except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+            st.error(f"無法讀取 Excel 檔案: {exc}")
+            st.stop()
+        sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
+        try:
+            rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
+        except Exception as exc:  # pragma: no cover - streamlit runtime feedback
+            st.error(f"資料格式錯誤: {exc}")
+            st.stop()
+        parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
+        parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
+        if st.session_state.get("parameterSourceToken") != parameterSourceToken:
+            st.session_state["parameterSourceToken"] = parameterSourceToken
+            if parameterOverrides and apply_parameter_overrides(parameterOverrides):
+                st.rerun()
+
     with st.container(border=True):
         st.caption("Frame Step / Frame Offset")
         columnA, columnB = st.columns(2)
@@ -372,8 +404,6 @@ with st.sidebar:
         contourGridColor = st.color_picker("contour grid color", value="#d9d9d9")
         inputTitle = st.text_input("title", value="wafer_frame_preview")
 
-uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
-
 plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
 calculatedDf = pd.DataFrame()
 duplicateCount = 0
@@ -386,38 +416,14 @@ outputStem = sanitize_file_stem(title)
 excelNameForInfo = "(none)"
 valueLabel = "thickness"
 coordinateMode = "index"
-sheetName = ""
 parameterTemplateBytes: bytes | None = None
 parameterTemplatePath: Path | None = None
 missingParameterColumns = False
 
 if hasExcelData:
-    fileBytes = uploadedFile.getvalue()
-    fileName = Path(uploadedFile.name)
     excelNameForInfo = fileName.name
     outputStem = fileName.stem
     title = fileName.stem
-
-    try:
-        excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
-    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-        st.error(f"無法讀取 Excel 檔案: {exc}")
-        st.stop()
-
-    sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
-
-    try:
-        rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
-    except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-        st.error(f"資料格式錯誤: {exc}")
-        st.stop()
-
-    parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
-    parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
-    if st.session_state.get("parameterSourceToken") != parameterSourceToken:
-        st.session_state["parameterSourceToken"] = parameterSourceToken
-        if parameterOverrides and apply_parameter_overrides(parameterOverrides):
-            st.rerun()
 
     missingParameterColumns = not hasParameterColumns
     if missingParameterColumns:
@@ -437,6 +443,9 @@ if hasExcelData:
             bottomMm=bottomMm,
         )
         selectedSheetWithParameters = build_sheet_with_parameter_columns(rawSheetDf, parameterRows)
+        if excelFile is None:
+            st.error("Excel 資訊初始化失敗，請重新上傳檔案。")
+            st.stop()
         allSheetTables = {
             name: pd.read_excel(io.BytesIO(fileBytes), sheet_name=name, header=None)
             for name in excelFile.sheet_names
