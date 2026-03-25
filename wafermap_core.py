@@ -142,6 +142,7 @@ def calculate_positions(
     offsetXUm: float,
     offsetYUm: float,
     coordinateMode: str = "index",
+    indexBaseYUm: float = 0.0,
 ) -> pd.DataFrame:
     result = df.copy()
     if coordinateMode == "mm":
@@ -151,7 +152,7 @@ def calculate_positions(
         result["posYUm"] = result["posYMm"] * 1000.0
     else:
         result["posXUm"] = result["siteX"] * stepXUm + offsetXUm - (stepXUm / 2.0)
-        result["posYUm"] = result["siteY"] * stepYUm + offsetYUm + stepYUm
+        result["posYUm"] = result["siteY"] * stepYUm + offsetYUm + indexBaseYUm
         result["posXMm"] = result["posXUm"] / 1000.0
         result["posYMm"] = result["posYUm"] / 1000.0
     return result

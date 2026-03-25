@@ -472,6 +472,7 @@ if hasExcelData:
         offsetXUm=offsetXUm,
         offsetYUm=offsetYUm,
         coordinateMode=coordinateMode,
+        indexBaseYUm=(topMm - edgeExcludeMm) * 1000.0,
     )
     plotDf, duplicateCount = collapse_duplicate_points(calculatedDf)
 else:
