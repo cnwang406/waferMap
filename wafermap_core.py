@@ -46,10 +46,10 @@ def validate_parameters(
 ) -> None:
     if stepXUm <= 0 or stepYUm <= 0:
         raise ValueError("stepX 與 stepY 必須大於 0。")
-    if offsetXUm < 0 or offsetYUm < 0:
-        raise ValueError("offsetX 與 offsetY 必須大於或等於 0。")
-    if offsetXUm >= stepXUm or offsetYUm >= stepYUm:
-        raise ValueError("offsetX 必須小於 stepX，且 offsetY 必須小於 stepY。")
+    if offsetXUm <= -stepXUm or offsetXUm >= stepXUm:
+        raise ValueError("offsetX 建議範圍為 (-stepX, stepX)。")
+    if offsetYUm <= -stepYUm or offsetYUm >= stepYUm:
+        raise ValueError("offsetY 建議範圍為 (-stepY, stepY)。")
     if diameterMm <= 0:
         raise ValueError("wafer diameter 必須大於 0。")
 
@@ -150,8 +150,8 @@ def calculate_positions(
         result["posXUm"] = result["posXMm"] * 1000.0
         result["posYUm"] = result["posYMm"] * 1000.0
     else:
-        result["posXUm"] = result["siteX"] * stepXUm + offsetXUm
-        result["posYUm"] = result["siteY"] * stepYUm + offsetYUm
+        result["posXUm"] = result["siteX"] * stepXUm + offsetXUm - (stepXUm / 2.0)
+        result["posYUm"] = result["siteY"] * stepYUm + offsetYUm + stepYUm
         result["posXMm"] = result["posXUm"] / 1000.0
         result["posYMm"] = result["posYUm"] / 1000.0
     return result

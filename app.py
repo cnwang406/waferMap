@@ -368,10 +368,10 @@ with st.sidebar:
     with st.container(border=True):
         st.caption("Site Offset")
         offsetXUm = st.number_input(
-            "offsetX from frame left-bottom (um)", min_value=0.0, step=10.0, key="offsetXUm"
+            "offsetX from frame left-bottom (um)", step=10.0, key="offsetXUm"
         )
         offsetYUm = st.number_input(
-            "offsetY from frame left-bottom (um)", min_value=0.0, step=10.0, key="offsetYUm"
+            "offsetY from frame left-bottom (um)", step=10.0, key="offsetYUm"
         )
 
     with st.container(border=True):
