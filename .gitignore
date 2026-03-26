@@ -10,3 +10,7 @@ sample_input.*
 *.jpg
 
 .DS_Store
+ICON?
+dist/
+build/
+*.egg-info/

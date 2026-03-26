@@ -6,7 +6,6 @@ A Streamlit app for plotting wafer thickness contour maps from Excel measurement
 [![Streamlit](https://img.shields.io/badge/streamlit-1.55-FF4B4B.svg)](https://streamlit.io/)
 [![Pandas](https://img.shields.io/badge/pandas-2.3-150458.svg)](https://pandas.pydata.org/)
 [![Matplotlib](https://img.shields.io/badge/matplotlib-3.10-11557c.svg)](https://matplotlib.org/)
-[![SciPy](https://img.shields.io/badge/scipy-1.17-8CAAE6.svg)](https://scipy.org/)
 [![License MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
 by cnwang, 2026/03
@@ -30,7 +29,8 @@ by cnwang, 2026/03
 - Frame bottom gap constraint: frame lowest edge must keep at least `bottom` distance from wafer bottom
 - Show only complete rectangular frames fully inside wafer; partial frame segments are hidden
 - Toggle contour display
-- Thickness colorbar is moved to the left side when right-side info panel is enabled (avoids overlap)
+- Contour interpolation and edge-exclude calculation run without SciPy dependency
+- Thickness colorbar and info panel layout are auto-adjusted to avoid overlap
 - Render measurement point labels when Excel data exists
 - Toggle contour grid display (hidden by default, light gray when shown)
 - Optional info panel on the right side of wafer chart

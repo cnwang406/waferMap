@@ -9,7 +9,7 @@ input : excel with siteX, siteY, thickness
 parameters : stepX, stepY, offsetX, offsetY, frameOffsetX, frameOffsetY, diameter, flat
 output : frame-only preview or contour plot, data table, JPG file
 
-framework : streamlit, pandas, matplotlib, scipy.interpolate
+framework : streamlit, pandas, matplotlib, numpy
 """
 
 

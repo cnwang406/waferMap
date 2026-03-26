@@ -4,11 +4,10 @@ import io
 import math
 
 import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
 import numpy as np
 import pandas as pd
 from matplotlib.path import Path as MplPath
-from scipy.ndimage import distance_transform_edt
-from scipy.interpolate import griddata
 
 
 defaultDiameterMm = 150.0
@@ -92,10 +91,56 @@ def polygon_area(points: np.ndarray) -> float:
     return 0.5 * np.sum(xValues * np.roll(yValues, -1) - yValues * np.roll(xValues, -1))
 
 
+def min_distance_to_segments(
+    points: np.ndarray,
+    segmentStarts: np.ndarray,
+    segmentEnds: np.ndarray,
+    chunkSize: int = 3000,
+) -> np.ndarray:
+    if len(points) == 0:
+        return np.array([])
+
+    segmentVectors = segmentEnds - segmentStarts
+    segmentLengthSquared = np.sum(segmentVectors * segmentVectors, axis=1)
+    safeLengthSquared = np.where(segmentLengthSquared > 1e-14, segmentLengthSquared, 1.0)
+    minDistances = np.empty(len(points), dtype=float)
+
+    for startIndex in range(0, len(points), chunkSize):
+        endIndex = min(startIndex + chunkSize, len(points))
+        pointChunk = points[startIndex:endIndex]
+        pointToStart = pointChunk[:, None, :] - segmentStarts[None, :, :]
+        projected = np.sum(pointToStart * segmentVectors[None, :, :], axis=2) / safeLengthSquared[None, :]
+        projected = np.clip(projected, 0.0, 1.0)
+        closestPoints = segmentStarts[None, :, :] + projected[:, :, None] * segmentVectors[None, :, :]
+        distanceSquared = np.sum((pointChunk[:, None, :] - closestPoints) ** 2, axis=2)
+        minDistances[startIndex:endIndex] = np.sqrt(np.min(distanceSquared, axis=1))
+
+    return minDistances
+
+
+def nearest_value_lookup(
+    sourcePoints: np.ndarray,
+    sourceValues: np.ndarray,
+    queryPoints: np.ndarray,
+    chunkSize: int = 3000,
+) -> np.ndarray:
+    if len(queryPoints) == 0:
+        return np.array([])
+
+    nearestValues = np.empty(len(queryPoints), dtype=float)
+    for startIndex in range(0, len(queryPoints), chunkSize):
+        endIndex = min(startIndex + chunkSize, len(queryPoints))
+        queryChunk = queryPoints[startIndex:endIndex]
+        distanceSquared = np.sum((queryChunk[:, None, :] - sourcePoints[None, :, :]) ** 2, axis=2)
+        nearestIndexes = np.argmin(distanceSquared, axis=1)
+        nearestValues[startIndex:endIndex] = sourceValues[nearestIndexes]
+    return nearestValues
+
+
 def build_effective_outline(
     waferOutline: np.ndarray,
     edgeExcludeMm: float,
-    gridSize: int = 900,
+    gridSize: int = 520,
 ) -> np.ndarray:
     if edgeExcludeMm <= 0:
         return waferOutline.copy()
@@ -113,14 +158,19 @@ def build_effective_outline(
     if not np.any(maskInside):
         return np.empty((0, 2))
 
-    xStep = (xMax - xMin) / max(gridSize - 1, 1)
-    yStep = (yMax - yMin) / max(gridSize - 1, 1)
-    distanceInside = distance_transform_edt(maskInside, sampling=(yStep, xStep))
-    if float(distanceInside.max()) <= edgeExcludeMm:
+    segmentStarts = waferOutline[:-1]
+    segmentEnds = waferOutline[1:]
+    insidePoints = np.column_stack((gridX[maskInside], gridY[maskInside]))
+    insideDistances = min_distance_to_segments(insidePoints, segmentStarts, segmentEnds)
+    if len(insideDistances) == 0 or float(np.max(insideDistances)) <= edgeExcludeMm:
+        return np.empty((0, 2))
+    effectiveMask = np.zeros_like(maskInside, dtype=bool)
+    effectiveMask[maskInside] = insideDistances >= edgeExcludeMm
+    if not np.any(effectiveMask):
         return np.empty((0, 2))
 
     contourFigure, contourAxis = plt.subplots(figsize=(4, 4), dpi=100)
-    contourSet = contourAxis.contour(xValues, yValues, distanceInside, levels=[edgeExcludeMm])
+    contourSet = contourAxis.contour(xValues, yValues, effectiveMask.astype(float), levels=[0.5])
     contourSegments = contourSet.allsegs[0] if contourSet.allsegs else []
     plt.close(contourFigure)
 
@@ -212,9 +262,19 @@ def build_interpolated_grid(
         np.linspace(yMin, yMax, gridSize),
     )
 
-    linearGrid = griddata(points, values, (gridX, gridY), method="linear")
-    nearestGrid = griddata(points, values, (gridX, gridY), method="nearest")
-    gridZ = np.where(np.isnan(linearGrid), nearestGrid, linearGrid)
+    triangulation = mtri.Triangulation(points[:, 0], points[:, 1])
+    linearInterpolator = mtri.LinearTriInterpolator(triangulation, values)
+    linearGrid = linearInterpolator(gridX, gridY)
+    if np.ma.isMaskedArray(linearGrid):
+        gridZ = linearGrid.filled(np.nan)
+    else:
+        gridZ = np.asarray(linearGrid, dtype=float)
+
+    missingMask = np.isnan(gridZ)
+    if np.any(missingMask):
+        missingPoints = np.column_stack((gridX[missingMask], gridY[missingMask]))
+        nearestValues = nearest_value_lookup(points, values, missingPoints)
+        gridZ[missingMask] = nearestValues
 
     outlinePath = MplPath(outline)
     inside = outlinePath.contains_points(
