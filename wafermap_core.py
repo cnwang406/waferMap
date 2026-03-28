@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import numpy as np
 import pandas as pd
+from matplotlib.patches import Polygon as MplPolygon
 from matplotlib.path import Path as MplPath
 
 
@@ -14,7 +15,8 @@ defaultDiameterMm = 150.0
 flatOptions = {
     "47.5 mm": 47.5,
     "57.5 mm": 57.5,
-    "notch": "notch",
+    "notch-180": "notch-180",
+    "notch-135": "notch-135",
 }
 notchWidthMm = 6.0
 notchDepthMm = 2.0
@@ -56,7 +58,7 @@ def validate_parameters(
 def build_wafer_outline(diameterMm: float, flatOption: str) -> np.ndarray:
     radius = diameterMm / 2.0
 
-    if flatOption == "notch":
+    if flatOption in {"notch-180", "notch-135"}:
         halfWidth = notchWidthMm / 2.0
         yJoin = -math.sqrt(max(radius**2 - halfWidth**2, 0.0))
         thetaLeft = math.atan2(yJoin, -halfWidth)
@@ -70,7 +72,18 @@ def build_wafer_outline(diameterMm: float, flatOption: str) -> np.ndarray:
                 [halfWidth, yJoin],
             ]
         )
-        return np.vstack((arc, notch, arc[0]))
+        outline = np.vstack((arc, notch, arc[0]))
+        if flatOption == "notch-135":
+            rotationDeg = 45.0
+            rotationRad = math.radians(rotationDeg)
+            rotationMatrix = np.array(
+                [
+                    [math.cos(rotationRad), -math.sin(rotationRad)],
+                    [math.sin(rotationRad), math.cos(rotationRad)],
+                ]
+            )
+            outline = outline @ rotationMatrix.T
+        return outline
 
     flatLength = flatOptions[flatOption]
     halfFlat = float(flatLength) / 2.0
@@ -396,6 +409,160 @@ def canonical_edge_key(
     return (roundedA, roundedB) if roundedA <= roundedB else (roundedB, roundedA)
 
 
+def radial_edge_distance(waferOutline: np.ndarray, radialDirection: np.ndarray) -> float | None:
+    if len(waferOutline) < 2:
+        return None
+
+    rayPerp = np.array([-radialDirection[1], radialDirection[0]], dtype=float)
+    bestDistance: float | None = None
+    bestPerpendicularDistance = float("inf")
+
+    for point in waferOutline:
+        projection = float(np.dot(point, radialDirection))
+        if projection < 0:
+            continue
+        perpendicularDistance = abs(float(np.dot(point, rayPerp)))
+        if perpendicularDistance < bestPerpendicularDistance - 1e-9:
+            bestPerpendicularDistance = perpendicularDistance
+            bestDistance = projection
+        elif abs(perpendicularDistance - bestPerpendicularDistance) <= 1e-9:
+            if bestDistance is None or projection > bestDistance:
+                bestDistance = projection
+
+    return bestDistance
+
+
+def build_laser_mark_geometry(
+    waferOutline: np.ndarray,
+    edgeToMarkTopMm: float,
+    charHeightMm: float,
+    markerLengthMm: float,
+    positionDeg: float,
+) -> dict[str, object]:
+    debugInfo: dict[str, object] = {
+        "positionDeg": float(positionDeg),
+        "edgeToMarkTopMm": float(edgeToMarkTopMm),
+        "charHeightMm": float(charHeightMm),
+        "markerLengthMm": float(markerLengthMm),
+        "polygon": None,
+    }
+
+    if len(waferOutline) < 3 or charHeightMm <= 0 or markerLengthMm <= 0:
+        return debugInfo
+
+    theta = math.radians(float(positionDeg))
+    radialDirection = np.array([math.sin(theta), math.cos(theta)], dtype=float)
+    tangentDirection = np.array([math.cos(theta), -math.sin(theta)], dtype=float)
+    debugInfo["thetaRad"] = float(theta)
+    debugInfo["radialDirection"] = radialDirection
+    debugInfo["tangentDirection"] = tangentDirection
+
+    edgeDistance = radial_edge_distance(waferOutline, radialDirection)
+    debugInfo["edgeDistance"] = edgeDistance
+    if edgeDistance is None or edgeDistance <= 0:
+        return debugInfo
+
+    topCenter = radialDirection * max(edgeDistance - edgeToMarkTopMm, 0.0)
+    center = topCenter - radialDirection * (charHeightMm / 2.0)
+
+    halfLengthVector = tangentDirection * (markerLengthMm / 2.0)
+    halfHeightVector = radialDirection * (charHeightMm / 2.0)
+
+    corners = np.vstack(
+        (
+            center - halfLengthVector + halfHeightVector,
+            center + halfLengthVector + halfHeightVector,
+            center + halfLengthVector - halfHeightVector,
+            center - halfLengthVector - halfHeightVector,
+        )
+    )
+    debugInfo["topCenter"] = topCenter
+    debugInfo["center"] = center
+    debugInfo["polygon"] = corners
+    return debugInfo
+
+
+def build_laser_mark_polygon(
+    waferOutline: np.ndarray,
+    edgeToMarkTopMm: float,
+    charHeightMm: float,
+    markerLengthMm: float,
+    positionDeg: float,
+) -> np.ndarray | None:
+    return build_laser_mark_geometry(
+        waferOutline=waferOutline,
+        edgeToMarkTopMm=edgeToMarkTopMm,
+        charHeightMm=charHeightMm,
+        markerLengthMm=markerLengthMm,
+        positionDeg=positionDeg,
+    ).get("polygon")
+
+
+def draw_laser_mark(
+    ax: plt.Axes,
+    waferOutline: np.ndarray,
+    showLaserMark: bool,
+    edgeToMarkTopMm: float,
+    charHeightMm: float,
+    markerLengthMm: float,
+    positionDeg: float,
+    lineColor: str = "#00aa44",
+) -> np.ndarray | None:
+    debugInfo = build_laser_mark_geometry(
+        waferOutline=waferOutline,
+        edgeToMarkTopMm=edgeToMarkTopMm,
+        charHeightMm=charHeightMm,
+        markerLengthMm=markerLengthMm,
+        positionDeg=positionDeg,
+    )
+    # print(
+    #     f"[laser-mark] show={showLaserMark} positionDeg={positionDeg} edgeToMarkTopMm={edgeToMarkTopMm} charHeightMm={charHeightMm} markerLengthMm={markerLengthMm}",
+    #     flush=True,
+    # )
+    # print(f"[laser-mark] edgeDistance={debugInfo.get('edgeDistance')}", flush=True)
+    # if debugInfo.get("radialDirection") is not None:
+    #     radialDirection = debugInfo["radialDirection"]
+    #     print(
+    #         f"[laser-mark] radialDirection=({radialDirection[0]:.6f},{radialDirection[1]:.6f})",
+    #         flush=True,
+    #     )
+    # if debugInfo.get("topCenter") is not None:
+    #     topCenter = debugInfo["topCenter"]
+    #     print(f"[laser-mark] topCenter=({topCenter[0]:.3f},{topCenter[1]:.3f})", flush=True)
+    # if debugInfo.get("center") is not None:
+    #     center = debugInfo["center"]
+    #     print(f"[laser-mark] center=({center[0]:.3f},{center[1]:.3f})", flush=True)
+
+    laserMarkPolygon = debugInfo.get("polygon")
+    # if laserMarkPolygon is None:
+    #     print("[laser-mark] polygon=None", flush=True)
+    # else:
+    #     debugCorners = "; ".join(
+    #         f"corner{index + 1}=({point[0]:.3f},{point[1]:.3f})"
+    #         for index, point in enumerate(laserMarkPolygon)
+    #     )
+    #     print(f"[laser-mark] {debugCorners}", flush=True)
+
+    if not showLaserMark:
+        # print("[laser-mark] skipped: disabled", flush=True)
+        return None
+    if laserMarkPolygon is None:
+        return None
+
+    patch = MplPolygon(
+        laserMarkPolygon,
+        closed=True,
+        fill=False,
+        edgecolor=lineColor,
+        linewidth=0.6,
+        linestyle="-",
+        alpha=0.55,
+        zorder=4.2,
+    )
+    ax.add_patch(patch)
+    return laserMarkPolygon
+
+
 def draw_frames(
     ax: plt.Axes,
     outline: np.ndarray,
@@ -663,6 +830,12 @@ def render_figure(
     effectiveEdgeColor: str,
     waferEdgeColor: str,
     contourGridColor: str,
+    showLaserMark: bool = False,
+    edgeToMarkTopMm: float = 3.0,
+    charHeightMm: float = 1.3,
+    markerLengthMm: float = 11.0,
+    laserMarkPositionDeg: float = 0.0,
+    laserMarkColor: str = "#00aa44",
 ) -> plt.Figure:
     radius = np.max(np.linalg.norm(waferOutline, axis=1))
     hasPoints = not pointsDf.empty
@@ -779,6 +952,16 @@ def render_figure(
             linewidth=1.4,
             zorder=4,
         )
+    laserMarkPolygon = draw_laser_mark(
+        ax=ax,
+        waferOutline=waferOutline,
+        showLaserMark=showLaserMark,
+        edgeToMarkTopMm=edgeToMarkTopMm,
+        charHeightMm=charHeightMm,
+        markerLengthMm=markerLengthMm,
+        positionDeg=laserMarkPositionDeg,
+        lineColor=laserMarkColor,
+    )
 
     if hasPoints:
         for row in pointsDf.itertuples():
