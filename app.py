@@ -57,8 +57,10 @@ def parse_flat_value(rawValue: object) -> str | None:
         return "47.5 mm"
     if text in {"57.5", "57.5mm", "57.5 mm"}:
         return "57.5 mm"
-    if "notch" in text:
-        return "notch"
+    if text in {"notch", "notch180", "notch-180", "notch 180"}:
+        return "notch-180"
+    if text in {"notch135", "notch-135", "notch 135"}:
+        return "notch-135"
     valueNumber = pd.to_numeric(pd.Series([rawValue]), errors="coerce").iloc[0]
     if pd.notna(valueNumber):
         if abs(float(valueNumber) - 47.5) < 0.5:
@@ -310,6 +312,11 @@ defaultStateValues = {
     "flatOption": "57.5 mm",
     "edgeExcludeMm": 2.5,
     "bottomMm": 3.0,
+    "showLaserMark": False,
+    "laserMarkEdgeToTopMm": 3.0,
+    "laserMarkCharHeightMm": 1.3,
+    "laserMarkLengthMm": 11.0,
+    "laserMarkPositionDeg": 0.0,
 }
 for stateKey, defaultValue in defaultStateValues.items():
     if stateKey not in st.session_state:
@@ -382,14 +389,27 @@ with st.sidebar:
             step=1.0,
             key="diameterMm",
         )
-        flatDefaultIndex = list(flatOptions.keys()).index(
-            st.session_state.get("flatOption", "57.5 mm")
-        )
         flatOption = st.selectbox(
-            "flat", list(flatOptions.keys()), index=flatDefaultIndex, key="flatOption"
+            "flat", list(flatOptions.keys()), key="flatOption"
         )
         edgeExcludeMm = st.number_input("edge exclude (mm)", min_value=0.0, step=0.1, key="edgeExcludeMm")
         bottomMm = st.number_input("bottom (mm)", min_value=0.0, step=0.1, key="bottomMm")
+
+    with st.container(border=True):
+        st.caption("Laser Mark")
+        showLaserMark = st.checkbox("enable lasermark frame", key="showLaserMark")
+        laserMarkEdgeToTopMm = st.number_input(
+            "edge-to-mark_top (mm)", min_value=0.0, step=0.1, key="laserMarkEdgeToTopMm"
+        )
+        laserMarkCharHeightMm = st.number_input(
+            "char-height (mm)", min_value=0.1, step=0.1, key="laserMarkCharHeightMm"
+        )
+        laserMarkLengthMm = st.number_input(
+            "marker length (mm)", min_value=0.1, step=0.1, key="laserMarkLengthMm"
+        )
+        laserMarkPositionDeg = st.number_input(
+            "position (deg)", step=1.0, key="laserMarkPositionDeg"
+        )
 
     with st.container(border=True):
         st.caption("Display / Title")
@@ -589,6 +609,11 @@ figure = render_figure(
     effectiveEdgeColor=effectiveEdgeColor,
     waferEdgeColor=waferEdgeColor,
     contourGridColor=contourGridColor,
+    showLaserMark=showLaserMark,
+    edgeToMarkTopMm=laserMarkEdgeToTopMm,
+    charHeightMm=laserMarkCharHeightMm,
+    markerLengthMm=laserMarkLengthMm,
+    laserMarkPositionDeg=laserMarkPositionDeg,
 )
 jpgBytes = figure_to_jpg_bytes(figure)
 outputPath = Path.cwd() / f"{outputStem}.jpg"
@@ -629,8 +654,8 @@ with colChart:
         st.warning(f"有 {outsideCount} 個量測點落在 wafer 外框之外，請確認 step/offset 或來源資料。")
     if showContourEffective and contourGrid is None:
         st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
-    if flatOption == "notch":
-        st.caption("notch 外框使用 6 mm 寬、2 mm 深的近似 V-notch。")
+    if flatOption in {"notch-180", "notch-135"}:
+        st.caption(f"{flatOption} 外框使用 6 mm 寬、2 mm 深的近似 V-notch。")
 
 with colData:
     st.subheader("計算結果")

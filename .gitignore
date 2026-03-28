@@ -10,6 +10,7 @@ sample_input.*
 *.jpg
 
 .DS_Store
+Icon?
 ICON?
 dist/
 build/

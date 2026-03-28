@@ -16,10 +16,12 @@ by cnwang, 2026/03
 - Excel upload is optional
 - No Excel: render wafer outline + frame-only preview
 - With Excel: render points and optional contour
-- Sidebar parameters are arranged in 4 boxed sections
+- Sidebar parameters are arranged in 5 boxed sections
+- Optional laser mark rectangle overlay with adjustable position, length, height, and edge distance
 - Input wafer map parameters: `stepX`, `stepY`, `array X`, `array Y`, `top`, `bottom`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`, `edge exclude`
+- Laser mark parameters: `edge-to-mark_top`, `char-height`, `marker length`, `position`, `enable lasermark frame`
 - Convert site coordinates into absolute wafer coordinates
-- Draw wafer outline with `47.5 mm`, `57.5 mm`, or `notch`
+- Draw wafer outline with `47.5 mm`, `57.5 mm`, `notch-180`, or `notch-135`
 - For flat wafers, the outer circular edge is clipped by the flat segment (no extra circle shown outside flat)
 - Draw an inner effective wafer boundary using `edge exclude` (light red line)
 - Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
@@ -68,11 +70,16 @@ If you upload Excel, it must contain these columns:
 | `offsetX` | Site offset X from frame lower-left origin | um |
 | `offsetY` | Site offset Y from frame lower-left origin | um |
 | `wafer diameter` | Wafer diameter | mm |
-| `flat` | Wafer edge type: `47.5 mm`, `57.5 mm`, `notch` (default `57.5 mm`) | mm / type |
+| `flat` | Wafer edge type: `47.5 mm`, `57.5 mm`, `notch-180`, `notch-135` (default `57.5 mm`) | mm / type |
 | `edge exclude` | Inward shrink distance from original wafer edge (default `2.5`) | mm |
 | `show contour` | Show/hide contour (only effective when Excel is uploaded) | bool |
 | `show contour grid` | Show/hide contour grid (default hidden) | bool |
 | `show info panel` | Show/hide parameter summary text at chart right side | bool |
+| `enable lasermark frame` | Show/hide laser mark rectangle | bool |
+| `edge-to-mark_top` | Distance from wafer edge to the outer/top side of the laser mark | mm |
+| `char-height` | Laser mark rectangle height | mm |
+| `marker length` | Laser mark rectangle width/length | mm |
+| `position` | Clockwise angle from wafer top; rectangle rotates with this angle | deg |
 | `title` | Custom chart title (overridden by Excel filename when Excel is uploaded) | text |
 
 Rules:
@@ -128,7 +135,9 @@ streamlit run app.py
 - `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y` use unit `um`
 - `array X` and `array Y` are unitless die counts per frame
 - `wafer diameter`, `top`, `edge exclude`, and flat size use unit `mm`
-- `notch` is currently drawn as an approximate V-notch
+- `notch-180` is drawn as an approximate V-notch at 180 degrees
+- `notch-135` is drawn as an approximate V-notch rotated to 135 degrees
+- laser mark frame uses the real wafer edge along the selected angle, so flat and notch edge types affect its placement
 - frame lines are light red dashed lines
 - die grid lines are lighter gray lines
 - die size is derived by `dieW = stepX / arrayX`, `dieH = stepY / arrayY`
