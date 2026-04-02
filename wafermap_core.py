@@ -759,22 +759,35 @@ def build_complete_die_rectangles(
 ) -> list[tuple[float, float, float, float]]:
     safeArrayX = max(int(arrayX), 1)
     safeArrayY = max(int(arrayY), 1)
-    dieWidthMm = (stepXUm / 1000.0) / safeArrayX
-    dieHeightMm = (stepYUm / 1000.0) / safeArrayY
-    frameOffsetXMm = frameOffsetXUm / 1000.0
-    frameOffsetYMm = frameOffsetYUm / 1000.0
-    return build_complete_rectangles(
+
+    completeFrames = build_complete_frame_rectangles(
         outline=outline,
-        tileWidthMm=dieWidthMm,
-        tileHeightMm=dieHeightMm,
-        offsetXMm=frameOffsetXMm,
-        offsetYMm=frameOffsetYMm,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        frameOffsetXUm=frameOffsetXUm,
+        frameOffsetYUm=frameOffsetYUm,
         topMm=topMm,
         bottomMm=0.0,
         topReferenceY=topReferenceY,
         bottomReferenceY=float(outline[:, 1].min()),
-        alignCenterX=True,
     )
+
+    completeDies: list[tuple[float, float, float, float]] = []
+    for frameLeft, frameBottom, frameRight, frameTop in completeFrames:
+        frameWidthMm = frameRight - frameLeft
+        frameHeightMm = frameTop - frameBottom
+        dieWidthMm = frameWidthMm / safeArrayX
+        dieHeightMm = frameHeightMm / safeArrayY
+
+        for yIndex in range(safeArrayY):
+            dieBottom = frameBottom + yIndex * dieHeightMm
+            dieTop = dieBottom + dieHeightMm
+            for xIndex in range(safeArrayX):
+                dieLeft = frameLeft + xIndex * dieWidthMm
+                dieRight = dieLeft + dieWidthMm
+                completeDies.append((dieLeft, dieBottom, dieRight, dieTop))
+
+    return completeDies
 
 
 def count_complete_frames(
