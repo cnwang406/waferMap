@@ -759,22 +759,52 @@ def build_complete_die_rectangles(
 ) -> list[tuple[float, float, float, float]]:
     safeArrayX = max(int(arrayX), 1)
     safeArrayY = max(int(arrayY), 1)
-    dieWidthMm = (stepXUm / 1000.0) / safeArrayX
-    dieHeightMm = (stepYUm / 1000.0) / safeArrayY
+    stepXMm = stepXUm / 1000.0
+    stepYMm = stepYUm / 1000.0
     frameOffsetXMm = frameOffsetXUm / 1000.0
     frameOffsetYMm = frameOffsetYUm / 1000.0
-    return build_complete_rectangles(
-        outline=outline,
-        tileWidthMm=dieWidthMm,
-        tileHeightMm=dieHeightMm,
-        offsetXMm=frameOffsetXMm,
-        offsetYMm=frameOffsetYMm,
+    dieWidthMm = stepXMm / safeArrayX
+    dieHeightMm = stepYMm / safeArrayY
+
+    xMin, yMin = outline.min(axis=0)
+    xMax, yMax = outline.max(axis=0)
+    outlinePath = MplPath(outline)
+
+    frameXOffset = frameOffsetXMm - (stepXMm / 2.0)
+    frameXOrigins = build_frame_origins(xMin, xMax, stepXMm, frameXOffset)
+    frameYOrigins = build_frame_y_origins_from_top(
+        yMin=yMin,
+        yMax=yMax,
+        pitchMm=stepYMm,
         topMm=topMm,
+        offsetYMm=frameOffsetYMm,
         bottomMm=0.0,
         topReferenceY=topReferenceY,
         bottomReferenceY=float(outline[:, 1].min()),
-        alignCenterX=True,
     )
+
+    completeDies: list[tuple[float, float, float, float]] = []
+    for frameLeft in frameXOrigins:
+        frameRight = frameLeft + stepXMm
+        if frameRight < xMin or frameLeft > xMax:
+            continue
+
+        for frameBottom in frameYOrigins:
+            frameTop = frameBottom + stepYMm
+            if frameTop < yMin or frameBottom > yMax:
+                continue
+
+            for yIndex in range(safeArrayY):
+                dieBottom = frameBottom + yIndex * dieHeightMm
+                dieTop = dieBottom + dieHeightMm
+                for xIndex in range(safeArrayX):
+                    dieLeft = frameLeft + xIndex * dieWidthMm
+                    dieRight = dieLeft + dieWidthMm
+                    if not is_complete_frame_inside(outlinePath, dieLeft, dieBottom, dieWidthMm, dieHeightMm):
+                        continue
+                    completeDies.append((dieLeft, dieBottom, dieRight, dieTop))
+
+    return completeDies
 
 
 def count_complete_frames(
