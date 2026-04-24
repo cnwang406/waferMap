@@ -52,6 +52,29 @@ def normalize_parameter_name(rawText: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(rawText).strip().lower())
 
 
+def detect_csv_format(fileBytes: bytes, fileName: str) -> tuple[str, pd.DataFrame | None]:
+    """
+    Detect CSV format type:
+    - 'kgdmap': Contains 'Lot' column (KGDmap format)
+    - 'normal': Standard x,y,value format
+    - 'unknown': Cannot determine format
+    
+    Returns: (format_type, dataframe_or_none)
+    """
+    try:
+        df = pd.read_csv(io.BytesIO(fileBytes))
+        columns_lower = [str(col).lower() for col in df.columns]
+        
+        if "lot" in columns_lower:
+            return "kgdmap", df
+        elif len(df.columns) >= 3:
+            return "normal", df
+        else:
+            return "unknown", None
+    except Exception:
+        return "unknown", None
+
+
 def parse_flat_value(rawValue: object) -> str | None:
     text = str(rawValue).strip().lower()
     if text in {"47.5", "47.5mm", "47.5 mm"}:
@@ -331,31 +354,69 @@ excelFile: pd.ExcelFile | None = None
 sheetName = ""
 rawSheetDf = pd.DataFrame()
 hasParameterColumns = False
+kgdmapData: pd.DataFrame | None = None
+isKGDmapFormat = False
 
 with st.sidebar:
     st.header("輸入參數")
-    uploadedFile = st.file_uploader("上傳 Excel 檔", type=["xlsx", "xls"])
+    uploadedFile = st.file_uploader("上傳 Excel/CSV 檔", type=["xlsx", "xls", "csv"])
     hasExcelData = uploadedFile is not None
+    
     if hasExcelData:
         fileBytes = uploadedFile.getvalue()
         fileName = Path(uploadedFile.name)
-        try:
-            excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
-        except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-            st.error(f"無法讀取 Excel 檔案: {exc}")
-            st.stop()
-        sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
-        try:
-            rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
-        except Exception as exc:  # pragma: no cover - streamlit runtime feedback
-            st.error(f"資料格式錯誤: {exc}")
-            st.stop()
-        parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
-        parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
-        if st.session_state.get("parameterSourceToken") != parameterSourceToken:
-            st.session_state["parameterSourceToken"] = parameterSourceToken
-            if parameterOverrides and apply_parameter_overrides(parameterOverrides):
-                st.rerun()
+        file_extension = fileName.suffix.lower()
+        
+        if file_extension == ".csv":
+            # Handle CSV file
+            try:
+                csv_format, csv_df = detect_csv_format(fileBytes, fileName.name)
+                
+                if csv_format == "kgdmap":
+                    # KGDmap format detected
+                    isKGDmapFormat = True
+                    kgdmapData = csv_df
+                    st.session_state["kgdmapData"] = csv_df
+                    st.session_state["kgdmapFileName"] = fileName.name
+                    st.success(f"KGDmap 格式偵測成功: {fileName.name}")
+                    st.info("KGDmap 數據已準備就緒，將在 Special View tab 中顯示")
+                    
+                elif csv_format == "normal":
+                    # Normal CSV with x,y,value format
+                    rawSheetDf = csv_df
+                    sheetName = "CSV Data"
+                    parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
+                    parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:csv"
+                    if st.session_state.get("parameterSourceToken") != parameterSourceToken:
+                        st.session_state["parameterSourceToken"] = parameterSourceToken
+                        if parameterOverrides and apply_parameter_overrides(parameterOverrides):
+                            st.rerun()
+                else:
+                    st.error(f"無法識別 CSV 格式: {fileName.name}")
+                    st.stop()
+                    
+            except Exception as exc:
+                st.error(f"無法讀取 CSV 檔案: {exc}")
+                st.stop()
+        else:
+            # Handle Excel file
+            try:
+                excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
+            except Exception as exc:
+                st.error(f"無法讀取 Excel 檔案: {exc}")
+                st.stop()
+            sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
+            try:
+                rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
+            except Exception as exc:
+                st.error(f"資料格式錯誤: {exc}")
+                st.stop()
+            parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
+            parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
+            if st.session_state.get("parameterSourceToken") != parameterSourceToken:
+                st.session_state["parameterSourceToken"] = parameterSourceToken
+                if parameterOverrides and apply_parameter_overrides(parameterOverrides):
+                    st.rerun()
 
     with st.container(border=True):
         st.caption("Frame Step / Frame Offset")
@@ -721,7 +782,22 @@ with colChart:
             st.caption(f"{flatOption} 外框使用 6 mm 寬、2 mm 深的近似 V-notch。")
     
     with tab2:
-        st.info("Special View tab - 將在輸入特殊格式檔案時顯示內容")
+        if isKGDmapFormat and kgdmapData is not None:
+            st.subheader("KGDmap 數據")
+            st.success(f"已載入: {st.session_state.get('kgdmapFileName', 'Unknown')}")
+            
+            with st.expander("數據預覽", expanded=False):
+                st.dataframe(kgdmapData.head(20), use_container_width=True)
+            
+            col_info1, col_info2 = st.columns(2)
+            with col_info1:
+                st.metric("總列數", len(kgdmapData.columns))
+            with col_info2:
+                st.metric("總行數", len(kgdmapData))
+            
+            st.info("KGDmap 格式處理方式待定義")
+        else:
+            st.info("Special View tab - 上傳 KGDmap (CSV with Lot column) 或其他特殊格式檔案來顯示內容")
 
 with colData:
     st.subheader("計算結果")
