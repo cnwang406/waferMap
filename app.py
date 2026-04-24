@@ -682,40 +682,46 @@ outputPath.write_bytes(jpgBytes)
 colChart, colData = st.columns([1.4, 1.0])
 
 with colChart:
-    st.pyplot(figure, width="stretch")
-    st.download_button(
-        label="下載 JPG",
-        data=jpgBytes,
-        file_name=f"{outputStem}.jpg",
-        mime="image/jpeg",
-    )
-    st.success(f"JPG 已輸出為 {outputPath.name}")
-    if not hasExcelData:
-        st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
-    if showContour and not hasExcelData:
-        st.caption("未提供 Excel，contour 已自動關閉。")
-    if hasExcelData:
-        st.caption(f"已上傳 Excel，title 使用左側輸入: {title}")
-        st.caption(coordinateModeText)
-        if missingParameterColumns and parameterTemplateBytes and parameterTemplatePath:
-            st.info("此 Excel 缺少 col4/col5 參數區，已自動產生可回用版本。")
-            st.download_button(
-                label="下載回填參數 Excel",
-                data=parameterTemplateBytes,
-                file_name=parameterTemplatePath.name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-            st.caption(f"也已輸出檔案：{parameterTemplatePath.name}")
-    if duplicateCount:
-        st.warning(
-            f"偵測到 {duplicateCount} 筆重複座標，繪圖時已先對相同座標的 thickness 取平均。"
+    tab1, tab2 = st.tabs(["Wafer Map", "Special View"])
+    
+    with tab1:
+        st.pyplot(figure, width="stretch")
+        st.download_button(
+            label="下載 JPG",
+            data=jpgBytes,
+            file_name=f"{outputStem}.jpg",
+            mime="image/jpeg",
         )
-    if outsideCount:
-        st.warning(f"有 {outsideCount} 個量測點落在 wafer 外框之外，請確認 step/offset 或來源資料。")
-    if showContourEffective and contourGrid is None:
-        st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
-    if flatOption in {"notch-180", "notch-135"}:
-        st.caption(f"{flatOption} 外框使用 6 mm 寬、2 mm 深的近似 V-notch。")
+        st.success(f"JPG 已輸出為 {outputPath.name}")
+        if not hasExcelData:
+            st.info("未上傳 Excel，僅使用 step/offset 參數顯示 wafer frames。")
+        if showContour and not hasExcelData:
+            st.caption("未提供 Excel，contour 已自動關閉。")
+        if hasExcelData:
+            st.caption(f"已上傳 Excel，title 使用左側輸入: {title}")
+            st.caption(coordinateModeText)
+            if missingParameterColumns and parameterTemplateBytes and parameterTemplatePath:
+                st.info("此 Excel 缺少 col4/col5 參數區，已自動產生可回用版本。")
+                st.download_button(
+                    label="下載回填參數 Excel",
+                    data=parameterTemplateBytes,
+                    file_name=parameterTemplatePath.name,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+                st.caption(f"也已輸出檔案：{parameterTemplatePath.name}")
+        if duplicateCount:
+            st.warning(
+                f"偵測到 {duplicateCount} 筆重複座標，繪圖時已先對相同座標的 thickness 取平均。"
+            )
+        if outsideCount:
+            st.warning(f"有 {outsideCount} 個量測點落在 wafer 外框之外，請確認 step/offset 或來源資料。")
+        if showContourEffective and contourGrid is None:
+            st.warning("可用點位不足以建立平滑 contour，將只顯示量測點與 thickness 標註。")
+        if flatOption in {"notch-180", "notch-135"}:
+            st.caption(f"{flatOption} 外框使用 6 mm 寬、2 mm 深的近似 V-notch。")
+    
+    with tab2:
+        st.info("Special View tab - 將在輸入特殊格式檔案時顯示內容")
 
 with colData:
     st.subheader("計算結果")
