@@ -20,6 +20,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+import json
 from wafermap_core import (
     build_complete_frame_rectangles,
     build_complete_die_rectangles,
@@ -412,21 +413,80 @@ with st.sidebar:
         )
 
     with st.container(border=True):
+        st.caption("Save / Load Configuration")
+        if st.button("Save Config"):
+            config_data = {
+                "stepXUm": st.session_state.get("stepXUm", 10000.0),
+                "stepYUm": st.session_state.get("stepYUm", 10000.0),
+                "frameOffsetXUm": st.session_state.get("frameOffsetXUm", 0.0),
+                "frameOffsetYUm": st.session_state.get("frameOffsetYUm", 0.0),
+                "arrayX": st.session_state.get("arrayX", 1),
+                "arrayY": st.session_state.get("arrayY", 1),
+                "topMm": st.session_state.get("topMm", 10.0),
+                "offsetXUm": st.session_state.get("offsetXUm", 0.0),
+                "offsetYUm": st.session_state.get("offsetYUm", 0.0),
+                "diameterMm": st.session_state.get("diameterMm", defaultDiameterMm),
+                "flatOption": st.session_state.get("flatOption", "57.5 mm"),
+                "edgeExcludeMm": st.session_state.get("edgeExcludeMm", 2.5),
+                "bottomMm": st.session_state.get("bottomMm", 3.0),
+                "showLaserMark": st.session_state.get("showLaserMark", False),
+                "laserMarkEdgeToTopMm": st.session_state.get("laserMarkEdgeToTopMm", 3.0),
+                "laserMarkCharHeightMm": st.session_state.get("laserMarkCharHeightMm", 1.3),
+                "laserMarkLengthMm": st.session_state.get("laserMarkLengthMm", 11.0),
+                "laserMarkPositionDeg": st.session_state.get("laserMarkPositionDeg", 0.0),
+                "showContour": st.session_state.get("showContour", True),
+                "contourStyle": st.session_state.get("contourStyle", "filled"),
+                "showContourGrid": st.session_state.get("showContourGrid", False),
+                "showInfoPanel": st.session_state.get("showInfoPanel", False),
+                "frameLineColor": st.session_state.get("frameLineColor", "#f4a3a3"),
+                "dieLineColor": st.session_state.get("dieLineColor", "#ececec"),
+                "effectiveEdgeColor": st.session_state.get("effectiveEdgeColor", "#f4a3a3"),
+                "waferEdgeColor": st.session_state.get("waferEdgeColor", "#000000"),
+                "contourGridColor": st.session_state.get("contourGridColor", "#d9d9d9"),
+                "inputTitle": st.session_state.get("inputTitle", "wafer_frame_preview"),
+            }
+            st.session_state["config_json"] = json.dumps(config_data, indent=2)
+            st.success("Configuration prepared for download!")
+        
+        if "config_json" in st.session_state:
+            st.download_button(
+                label="Download Config JSON",
+                data=st.session_state["config_json"],
+                file_name="wafer_config.json",
+                mime="application/json",
+            )
+        
+        uploaded_config = st.file_uploader("Load Config JSON", type=["json"], key="config_uploader")
+        if uploaded_config is not None:
+            if st.button("Apply Config"):
+                try:
+                    config_data = json.loads(uploaded_config.getvalue().decode("utf-8"))
+                    for key, value in config_data.items():
+                        st.session_state[key] = value
+                    if "config_json" in st.session_state:
+                        del st.session_state["config_json"]
+                    st.success("Configuration loaded successfully!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to load config: {e}")
+
+    with st.container(border=True):
         st.caption("Display / Title")
-        showContour = st.checkbox("顯示 contour", value=True)
+        showContour = st.checkbox("顯示 contour", value=True, key="showContour")
         contourStyle = st.selectbox(
             "contour style",
             ["filled", "lines", "filled + lines", "heatmap"],
             index=0,
+            key="contourStyle",
         )
-        showContourGrid = st.checkbox("顯示 contour grid", value=False)
-        showInfoPanel = st.checkbox("右側顯示參數資訊", value=False)
-        frameLineColor = st.color_picker("frame line color", value="#f4a3a3")
-        dieLineColor = st.color_picker("die line color", value="#ececec")
-        effectiveEdgeColor = st.color_picker("effective edge color", value="#f4a3a3")
-        waferEdgeColor = st.color_picker("wafer edge color", value="#000000")
-        contourGridColor = st.color_picker("contour grid color", value="#d9d9d9")
-        inputTitle = st.text_input("title", value="wafer_frame_preview")
+        showContourGrid = st.checkbox("顯示 contour grid", value=False, key="showContourGrid")
+        showInfoPanel = st.checkbox("右側顯示參數資訊", value=False, key="showInfoPanel")
+        frameLineColor = st.color_picker("frame line color", value="#f4a3a3", key="frameLineColor")
+        dieLineColor = st.color_picker("die line color", value="#ececec", key="dieLineColor")
+        effectiveEdgeColor = st.color_picker("effective edge color", value="#f4a3a3", key="effectiveEdgeColor")
+        waferEdgeColor = st.color_picker("wafer edge color", value="#000000", key="waferEdgeColor")
+        contourGridColor = st.color_picker("contour grid color", value="#d9d9d9", key="contourGridColor")
+        inputTitle = st.text_input("title", value="wafer_frame_preview", key="inputTitle")
 
 plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
 calculatedDf = pd.DataFrame()
