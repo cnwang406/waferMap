@@ -15,31 +15,15 @@ import streamlit as st
 
 def parse_kgdmap_data(df: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
     """
-    Parse KGDmap CSV format.
-    First 10 rows contain header info, row 11 (index 10) contains column names,
-    rows 12+ (index 11+) contain actual data.
+    Parse KGDmap CSV data.
+    When read with skiprows=11 and header=0:
+    - df already has proper column names
+    - All rows are data (header extracted separately by app)
     
-    Returns: (header_dict, data_dataframe)
+    Returns: (empty_dict_for_compat, data_dataframe)
     """
-    header_info = {}
-    
-    # Extract first 10 rows as header info
-    for idx in range(min(10, len(df))):
-        if len(df.columns) >= 2:
-            key = str(df.iloc[idx, 0]).strip()
-            value = str(df.iloc[idx, 1]).strip()
-            header_info[key] = value
-    
-    # Get column names from row 11 (index 10)
-    if len(df) > 10:
-        column_names = df.iloc[10].values
-        # Get data from row 12 onwards (index 11+)
-        data_df = pd.DataFrame(df.iloc[11:].values, columns=column_names)
-        data_df = data_df.reset_index(drop=True)
-    else:
-        data_df = pd.DataFrame()
-    
-    return header_info, data_df
+    # Since header is extracted separately in app.py, just return empty dict and data
+    return {}, df
 
 
 def get_kgdmap_items(data_df: pd.DataFrame) -> list[str]:
@@ -110,11 +94,14 @@ def create_kgdmap_figure(
     max_row: int,
     max_col: int,
     item_name: str,
-    header_info: dict,
+    header_info: dict | None = None,
 ) -> plt.Figure:
     """
     Create matplotlib figure for KGDmap visualization.
     """
+    if header_info is None:
+        header_info = {}
+    
     fig, ax = plt.subplots(figsize=(12, 8))
     
     # Create heatmap
@@ -146,10 +133,11 @@ def create_kgdmap_figure(
                                  ha="center", va="center", color="black", fontsize=8)
     
     # Add header info to figure
-    header_text = "\n".join([f"{k}: {v}" for k, v in list(header_info.items())[:5]])
-    fig.text(0.02, 0.98, header_text, transform=fig.transFigure,
-             fontsize=9, verticalalignment='top', family='monospace',
-             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    if header_info:
+        header_text = "\n".join([f"{k}: {v}" for k, v in list(header_info.items())[:5]])
+        fig.text(0.02, 0.98, header_text, transform=fig.transFigure,
+                 fontsize=9, verticalalignment='top', family='monospace',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
@@ -158,13 +146,17 @@ def create_kgdmap_figure(
 def render_kgdmap_viewer(kgdmap_df: pd.DataFrame):
     """
     Main function to render KGDmap viewer in Streamlit.
+    Retrieves header info from session_state if available.
     """
     if kgdmap_df is None or kgdmap_df.empty:
         st.warning("KGDmap 數據為空")
         return
     
     # Parse data
-    header_info, data_df = parse_kgdmap_data(kgdmap_df)
+    _, data_df = parse_kgdmap_data(kgdmap_df)
+    
+    # Get header info from session_state (extracted in app.py)
+    header_info = st.session_state.get("kgdmapHeader", {})
     
     if data_df.empty:
         st.error("無法解析 KGDmap 數據")

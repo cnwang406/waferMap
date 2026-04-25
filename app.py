@@ -56,24 +56,59 @@ def normalize_parameter_name(rawText: object) -> str:
 def detect_csv_format(fileBytes: bytes, fileName: str) -> tuple[str, pd.DataFrame | None]:
     """
     Detect CSV format type:
-    - 'kgdmap': Contains 'Lot' column (KGDmap format)
+    - 'kgdmap': KGDmap format with header (rows 1-10) and data (rows 12+)
     - 'normal': Standard x,y,value format
     - 'unknown': Cannot determine format
     
     Returns: (format_type, dataframe_or_none)
     """
     try:
-        df = pd.read_csv(io.BytesIO(fileBytes))
-        columns_lower = [str(col).lower() for col in df.columns]
+        # First, try to detect KGDmap by reading just the first 10 lines
+        lines = fileBytes.decode('utf-8').split('\n')[:12]
         
-        if "lot" in columns_lower:
+        # Check if first column values match KGDmap pattern
+        kgdmap_keywords = {'lot', 'wafer', 'date', 'time', 'programname', 'testername'}
+        first_col_keywords = []
+        
+        for i in range(min(10, len(lines))):
+            parts = lines[i].split(',')
+            if parts:
+                first_col_keywords.append(parts[0].lower().strip())
+        
+        # If first 10 rows start with KGDmap keywords, treat as KGDmap
+        if any(kw in kgdmap_keywords for kw in first_col_keywords[:5]):
+            # Read as KGDmap format
+            # Skip first 10 rows (0-9), use row 11 (index 10) as header, read from row 12 (index 11)
+            df = pd.read_csv(io.BytesIO(fileBytes), skiprows=10, header=0)
             return "kgdmap", df
-        elif len(df.columns) >= 3:
+        
+        # Otherwise try normal CSV format
+        df = pd.read_csv(io.BytesIO(fileBytes))
+        if len(df.columns) >= 3:
             return "normal", df
-        else:
-            return "unknown", None
-    except Exception:
+        
         return "unknown", None
+    except Exception as e:
+        return "unknown", None
+
+
+def extract_kgdmap_header(fileBytes: bytes) -> dict:
+    """
+    Extract KGDmap header information from first 10 rows.
+    """
+    header_info = {}
+    try:
+        lines = fileBytes.decode('utf-8').split('\n')[:10]
+        for line in lines:
+            parts = line.split(',', 1)
+            if len(parts) == 2:
+                key = parts[0].strip()
+                value = parts[1].strip()
+                if key:
+                    header_info[key] = value
+    except Exception:
+        pass
+    return header_info
 
 
 def parse_flat_value(rawValue: object) -> str | None:
@@ -377,7 +412,10 @@ with st.sidebar:
                     # KGDmap format detected
                     isKGDmapFormat = True
                     kgdmapData = csv_df
+                    # Extract header information
+                    header_info = extract_kgdmap_header(fileBytes)
                     st.session_state["kgdmapData"] = csv_df
+                    st.session_state["kgdmapHeader"] = header_info
                     st.session_state["kgdmapFileName"] = fileName.name
                     st.success(f"KGDmap 格式偵測成功: {fileName.name}")
                     st.info("KGDmap 數據已準備就緒，將在 Special View tab 中顯示")
