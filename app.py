@@ -37,6 +37,7 @@ from wafermap_core import (
     top_y_at_x,
     validate_parameters,
 )
+from kgdmapviewer import render_kgdmap_viewer
 
 
 def sanitize_file_stem(rawText: str) -> str:
@@ -783,19 +784,7 @@ with colChart:
     
     with tab2:
         if isKGDmapFormat and kgdmapData is not None:
-            st.subheader("KGDmap 數據")
-            st.success(f"已載入: {st.session_state.get('kgdmapFileName', 'Unknown')}")
-            
-            with st.expander("數據預覽", expanded=False):
-                st.dataframe(kgdmapData.head(20), use_container_width=True)
-            
-            col_info1, col_info2 = st.columns(2)
-            with col_info1:
-                st.metric("總列數", len(kgdmapData.columns))
-            with col_info2:
-                st.metric("總行數", len(kgdmapData))
-            
-            st.info("KGDmap 格式處理方式待定義")
+            render_kgdmap_viewer(kgdmapData)
         else:
             st.info("Special View tab - 上傳 KGDmap (CSV with Lot column) 或其他特殊格式檔案來顯示內容")
 
