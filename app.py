@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-version = "1.3"
+version = "2.0"
 appDescription = f"""Wafer Contour Viewer
 
 by cnwang 2026/03.  v{version}
@@ -438,24 +438,27 @@ with st.sidebar:
                 st.error(f"無法讀取 CSV 檔案: {exc}")
                 st.stop()
         else:
-            # Handle Excel file
-            try:
-                excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
-            except Exception as exc:
-                st.error(f"無法讀取 Excel 檔案: {exc}")
-                st.stop()
-            sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
-            try:
-                rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
-            except Exception as exc:
-                st.error(f"資料格式錯誤: {exc}")
-                st.stop()
-            parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
-            parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
-            if st.session_state.get("parameterSourceToken") != parameterSourceToken:
-                st.session_state["parameterSourceToken"] = parameterSourceToken
-                if parameterOverrides and apply_parameter_overrides(parameterOverrides):
-                    st.rerun()
+            # Handle Excel file (skip if KGDmap format)
+            if isKGDmapFormat:
+                pass  # Skip Excel processing for KGDmap format
+            else:
+                try:
+                    excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
+                except Exception as exc:
+                    st.error(f"無法讀取 Excel 檔案: {exc}")
+                    st.stop()
+                sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
+                try:
+                    rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
+                except Exception as exc:
+                    st.error(f"資料格式錯誤: {exc}")
+                    st.stop()
+                parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
+                parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
+                if st.session_state.get("parameterSourceToken") != parameterSourceToken:
+                    st.session_state["parameterSourceToken"] = parameterSourceToken
+                    if parameterOverrides and apply_parameter_overrides(parameterOverrides):
+                        st.rerun()
 
     with st.container(border=True):
         st.caption("Frame Step / Frame Offset")
@@ -604,7 +607,7 @@ parameterTemplateBytes: bytes | None = None
 parameterTemplatePath: Path | None = None
 missingParameterColumns = False
 
-if hasExcelData:
+if hasExcelData and not isKGDmapFormat:
     excelNameForInfo = fileName.name
 
     missingParameterColumns = not hasParameterColumns
@@ -779,9 +782,7 @@ jpgBytes = figure_to_jpg_bytes(figure)
 outputPath = Path.cwd() / f"{outputStem}.jpg"
 outputPath.write_bytes(jpgBytes)
 
-colChart, colData = st.columns([1.4, 1.0])
-
-with colChart:
+with st.container():
     tab1, tab2 = st.tabs(["Wafer Map", "Special View"])
     
     with tab1:
@@ -825,21 +826,5 @@ with colChart:
             render_kgdmap_viewer(kgdmapData)
         else:
             st.info("Special View tab - 上傳 KGDmap (CSV with Lot column) 或其他特殊格式檔案來顯示內容")
-
-with colData:
-    st.subheader("計算結果")
-    if hasExcelData:
-        displayDf = calculatedDf[
-            ["siteX", "siteY", "thickness", "posXUm", "posYUm", "posXMm", "posYMm"]
-        ].rename(columns={"thickness": valueLabel})
-        if coordinateMode == "mm":
-            displayDf = displayDf.rename(columns={"siteX": "coordX(mm)", "siteY": "coordY(mm)"})
-        st.dataframe(
-            displayDf,
-            width="stretch",
-            hide_index=True,
-        )
-    else:
-        st.caption("未提供 Excel，無量測資料表可顯示。")
 
 plt.close(figure)
