@@ -620,15 +620,19 @@ st.markdown("""
 <style>
     [data-testid="stSidebar"] * {
         font-family: 'Cascadia Code', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0 !important;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
         font-family: 'Cascadia Code', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0 !important;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
         font-family: 'Cascadia Code', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0 !important;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
         font-family: 'Cascadia Code', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
