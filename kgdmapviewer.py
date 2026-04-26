@@ -101,12 +101,22 @@ def create_kgdmap_figure(
     maxCol: int,
     itemName: str,
     headerInfo: dict | None = None,
+    dieWidthUm: float = 1.0,
+    dieHeightUm: float = 1.0,
 ) -> go.Figure:
     """
     Create plotly figure for KGDmap visualization with hover functionality.
+    dieWidthUm and dieHeightUm control the cell aspect ratio.
     """
     if headerInfo is None:
         headerInfo = {}
+    
+    # Calculate aspect ratio from die dimensions
+    aspectRatio = dieHeightUm / dieWidthUm if dieWidthUm > 0 else 1.0
+    
+    # Calculate figure height to maintain cell aspect ratio
+    baseWidth = 900
+    figHeight = max(400, int(baseWidth * maxRow / maxCol * aspectRatio))
     
     # Create the heatmap
     fig = go.Figure(data=go.Heatmap(
@@ -125,8 +135,8 @@ def create_kgdmap_figure(
         title=f"KGDmap: {itemName}",
         xaxis_title="Chip Column (1-indexed)",
         yaxis_title="Chip Row (1-indexed)",
-        width=1000,
-        height=600,
+        width=baseWidth,
+        height=figHeight,
         xaxis=dict(
             tickmode='linear',
             tick0=1,
@@ -142,10 +152,15 @@ def create_kgdmap_figure(
     return fig
 
 
-def render_kgdmap_viewer(kgdmapDf: pd.DataFrame):
+def render_kgdmap_viewer(
+    kgdmapDf: pd.DataFrame,
+    dieWidthUm: float = 1.0,
+    dieHeightUm: float = 1.0,
+):
     """
     Main function to render KGDmap viewer in Streamlit.
     Retrieves header info from session_state if available.
+    dieWidthUm and dieHeightUm are used for proper cell aspect ratio.
     """
     if kgdmapDf is None or kgdmapDf.empty:
         st.warning("KGDmap 數據為空")
@@ -161,21 +176,19 @@ def render_kgdmap_viewer(kgdmapDf: pd.DataFrame):
         st.error("無法解析 KGDmap 數據")
         return
     
-    # Display header info
-    st.subheader("KGDmap 基本資訊")
-    col1, col2, col3 = st.columns(3)
+    # Display header info (compact layout with small font)
+    st.subheader("KGDmap 基本資訊", divider=False)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Lot", headerInfo.get("Lot", "N/A"))
+        st.metric("Lot", headerInfo.get("Lot", "N/A"), help=None)
     with col2:
-        st.metric("Wafer", headerInfo.get("Wafer", "N/A"))
+        st.metric("Wafer", headerInfo.get("Wafer", "N/A"), help=None)
     with col3:
-        st.metric("Product", headerInfo.get("Product", "N/A"))
-    
-    col4, col5 = st.columns(2)
+        st.metric("Product", headerInfo.get("Product", "N/A"), help=None)
     with col4:
-        st.metric("Date", headerInfo.get("Date", "N/A"))
+        st.metric("Date", headerInfo.get("Date", "N/A"), help=None)
     with col5:
-        st.metric("Total Chips", len(dataDf))
+        st.metric("Total Chips", len(dataDf), help=None)
     
     # Item selector
     st.subheader("數據可視化")
@@ -200,7 +213,7 @@ def render_kgdmap_viewer(kgdmapDf: pd.DataFrame):
     
     # Create figure and statistics columns
     leftCol, rightCol = st.columns([3, 1])
-    fig = create_kgdmap_figure(gridData, maxRow, maxCol, selectedItem, headerInfo)
+    fig = create_kgdmap_figure(gridData, maxRow, maxCol, selectedItem, headerInfo, dieWidthUm, dieHeightUm)
     
     with leftCol:
         st.plotly_chart(fig, use_container_width=True)

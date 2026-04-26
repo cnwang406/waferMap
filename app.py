@@ -1043,7 +1043,10 @@ with st.container():
     
     with tab2:
         if isKGDmapFormat and kgdmapData is not None:
-            render_kgdmap_viewer(kgdmapData)
+            # Calculate die dimensions for proper cell aspect ratio
+            dieW = stepXUm / arrayX if arrayX > 0 else 1.0
+            dieH = stepYUm / arrayY if arrayY > 0 else 1.0
+            render_kgdmap_viewer(kgdmapData, dieW, dieH)
         else:
             st.info("Special View tab - 上傳 KGDmap (CSV with Lot column) 或其他特殊格式檔案來顯示內容")
     
