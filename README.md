@@ -42,6 +42,7 @@ by cnwang, 2026/03
 - App title is `Wafer Data Viewer`
 - Title input supported; when Excel is uploaded, title automatically uses Excel filename
 - Config JSON save/load support via the sidebar
+- Combined view overlays KGDmap values directly onto wafer dies with die borders drawn on top of the fill
 - Export chart as `.jpg`
 - With Excel: output filename follows uploaded Excel base name
 - Without Excel: output filename is `wafer_frame_preview.jpg`
