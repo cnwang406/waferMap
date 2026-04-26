@@ -151,6 +151,14 @@ def create_combined_figure_with_kgdmap(
     if isMismatch:
         mismatchMessage = f"MISMATCH: KGDmap has max dieR={maxDieR}, dieC={maxDieC} but completeDies has max labelY={maxLabelY}, labelX={maxLabelX}"
 
+    # Build mapping from (labelY, labelX) to die rectangle
+    dieMap: dict[tuple[int, int], tuple[float, float, float, float]] = {}
+    for dieLeft, dieBottom, dieRight, dieTop in completeDies:
+        xIndex = int(round((dieLeft - minDieLeft) / dieWidthMm))
+        yIndex = int(round((dieBottom - minDieBottom) / dieHeightMm))
+        labelX = xIndex + 1
+        labelY = yIndex + 1
+        dieMap[(labelY, labelX)] = (dieLeft, dieBottom, dieRight, dieTop)
     
     # Overlay KGDmap values
     for idx, row in kgdmapDf.iterrows():
@@ -161,22 +169,18 @@ def create_combined_figure_with_kgdmap(
         if pd.isna(value):
             continue
         
-        # Check bounds
-        if dieR < 1 or dieR > safeArrayY or dieC < 1 or dieC > safeArrayX:
+        # Find corresponding die in map
+        if (dieR, dieC) not in dieMap:
             continue
         
-        # Find corresponding die in completeDies
-        dieLeft = minDieLeft + (dieC - 1) * dieWidthMm
-        dieBottom = minDieBottom + (dieR - 1) * dieHeightMm
-        dieRight = dieLeft + dieWidthMm
-        dieTop = dieBottom + dieHeightMm
+        dieLeft, dieBottom, dieRight, dieTop = dieMap[(dieR, dieC)]
         
         # Draw filled rectangle with color
         color = cmap(norm(value))
         rect = plt.Rectangle(
             (dieLeft, dieBottom),
-            dieWidthMm,
-            dieHeightMm,
+            dieRight - dieLeft,
+            dieTop - dieBottom,
             facecolor=color,
             edgecolor='black',
             linewidth=0.5,
@@ -194,10 +198,11 @@ def create_combined_figure_with_kgdmap(
             f"{value:.1f}",
             ha="center",
             va="center",
-            fontsize=5,
+            fontsize=6,
             color="black",
             zorder=6,
-            bbox={"boxstyle": "round,pad=0.05", "fc": "white", "ec": "none", "alpha": 0.5},
+            weight="bold",
+            bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.6},
         )
     
     # Add colorbar
