@@ -532,8 +532,8 @@ def build_info_panel_text(
     return "\n".join(lines)
 
 
-st.set_page_config(page_title=f"Wafer Contour Viewer, by cnwang {version}", layout="wide")
-st.title("Wafer Thickness Contour")
+st.set_page_config(page_title=f"Wafer Data Viewer, by cnwang {version}", layout="wide")
+st.title("Wafer Data Viewer")
 
 
 st.caption(

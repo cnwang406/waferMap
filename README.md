@@ -1,6 +1,6 @@
 # waferMap
 
-A Streamlit app for plotting wafer thickness contour maps from Excel measurement data.
+A Streamlit app for wafer data visualization and contour mapping from measurement data.
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/release/python-3130/)
 [![Streamlit](https://img.shields.io/badge/streamlit-1.55-FF4B4B.svg)](https://streamlit.io/)
@@ -40,7 +40,9 @@ by cnwang, 2026/03
 - Info panel includes `total dies` (count of complete dies)
 - Info panel includes `edge exclude`, `top`, `bottom`, and `frame bottom gap` (mm)
 - Bottom-edge signature text: `by cnwang {VERSION}`
+- App title is `Wafer Data Viewer`
 - Title input supported; when Excel is uploaded, title automatically uses Excel filename
+- Config JSON save/load support via the sidebar
 - Export chart as `.jpg`
 - With Excel: output filename follows uploaded Excel base name
 - Without Excel: output filename is `wafer_frame_preview.jpg`
