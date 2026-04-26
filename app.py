@@ -619,20 +619,28 @@ st.title("Wafer Data Viewer")
 st.markdown("""
 <style>
     [data-testid="stSidebar"] * {
-        font-family: 'Cascadia Code', monospace !important;
-        font-feature-settings: 'liga' 0, 'calt' 0 !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
-        font-family: 'Cascadia Code', monospace !important;
-        font-feature-settings: 'liga' 0, 'calt' 0 !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
-        font-family: 'Cascadia Code', monospace !important;
-        font-feature-settings: 'liga' 0, 'calt' 0 !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
-        font-family: 'Cascadia Code', monospace !important;
-        font-feature-settings: 'liga' 0, 'calt' 0 !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
 </style>
 """, unsafe_allow_html=True)
