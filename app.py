@@ -619,28 +619,33 @@ st.title("Wafer Data Viewer")
 st.markdown("""
 <style>
     [data-testid="stSidebar"] * {
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Roboto Mono', 'Courier New', monospace !important;
         font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Roboto Mono', 'Courier New', monospace !important;
         font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Roboto Mono', 'Courier New', monospace !important;
         font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
     }
     [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Cascadia Code', 'Roboto Mono', monospace !important;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Roboto Mono', 'Courier New', monospace !important;
         font-feature-settings: 'liga' 0, 'calt' 0, 'dlig' 0 !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+    }
+    /* Hide any keyboard_double_arrow icons that might appear */
+    [data-testid="stSidebar"] .material-icons,
+    [data-testid="stSidebar"] [class*="keyboard_double_arrow"] {
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
