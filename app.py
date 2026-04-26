@@ -37,7 +37,176 @@ from wafermap_core import (
     top_y_at_x,
     validate_parameters,
 )
-from kgdmapviewer import render_kgdmap_viewer
+from kgdmapviewer import render_kgdmap_viewer, get_kgdmap_items
+
+
+def create_combined_figure_with_kgdmap(
+    originalFigure: plt.Figure,
+    kgdmapDf: pd.DataFrame,
+    selectedItemName: str,
+    arrayX: int,
+    arrayY: int,
+    stepXUm: float,
+    stepYUm: float,
+    frameOffsetXUm: float = 0.0,
+    frameOffsetYUm: float = 0.0,
+    topMm: float = 10.0,
+    waferOutline: object | None = None,
+    effectiveOutline: object | None = None,
+    topReferenceY: float = 0.0,
+) -> tuple[plt.Figure, bool, str]:
+    """
+    Create a combined figure overlaying KGDmap data on wafermap.
+    
+    Returns: (figure, isMismatch, mismatchMessage)
+    """
+    import copy
+    
+    if kgdmapDf is None or kgdmapDf.empty:
+        return originalFigure, False, ""
+    
+    # Convert chip_row and chip_column to numeric
+    kgdmapDf = kgdmapDf.copy()
+    kgdmapDf['chip_row'] = pd.to_numeric(kgdmapDf['chip_row'], errors='coerce')
+    kgdmapDf['chip_column'] = pd.to_numeric(kgdmapDf['chip_column'], errors='coerce')
+    kgdmapDf['dieR'] = pd.to_numeric(kgdmapDf['dieR'], errors='coerce')
+    kgdmapDf['dieC'] = pd.to_numeric(kgdmapDf['dieC'], errors='coerce')
+    
+    if selectedItemName not in kgdmapDf.columns:
+        return originalFigure, False, f"Item '{selectedItemName}' not found in KGDmap"
+    
+    kgdmapDf[selectedItemName] = pd.to_numeric(kgdmapDf[selectedItemName], errors='coerce')
+    
+    # Get die dimensions and grid info
+    safeArrayX = max(int(arrayX), 1)
+    safeArrayY = max(int(arrayY), 1)
+    stepXMm = stepXUm / 1000.0
+    stepYMm = stepYUm / 1000.0
+    dieWidthMm = stepXMm / safeArrayX
+    dieHeightMm = stepYMm / safeArrayY
+    
+    maxDieR = int(kgdmapDf['dieR'].max())
+    maxDieC = int(kgdmapDf['dieC'].max())
+    
+    # Create a copy of the figure
+    combinedFig = copy.deepcopy(originalFigure)
+    ax = combinedFig.gca()
+    
+    # Get value range for colormap
+    valueMin = kgdmapDf[selectedItemName].min()
+    valueMax = kgdmapDf[selectedItemName].max()
+    if pd.isna(valueMin) or pd.isna(valueMax):
+        return originalFigure, False, ""
+    
+    if valueMin == valueMax:
+        valueMin = valueMax - 1
+    
+    # Create colormap
+    from matplotlib.colors import Normalize
+    from matplotlib.cm import get_cmap
+    cmap = get_cmap('RdYlGn_r')
+    norm = Normalize(vmin=valueMin, vmax=valueMax)
+    
+    # Get die origins using provided outline or fallback
+    if waferOutline is None or effectiveOutline is None:
+        return originalFigure, False, ""
+    
+    completeDies = build_complete_die_rectangles(
+        outline=effectiveOutline,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        arrayX=safeArrayX,
+        arrayY=safeArrayY,
+        frameOffsetXUm=frameOffsetXUm,
+        frameOffsetYUm=frameOffsetYUm,
+        topMm=topMm,
+        topReferenceY=topReferenceY,
+    )
+    
+    if not completeDies:
+        return originalFigure, False, ""
+    
+    minDieLeft = min(die[0] for die in completeDies)
+    minDieBottom = min(die[1] for die in completeDies)
+    
+    # Calculate max labelY and labelX from completeDies
+    stepXMm = stepXUm / 1000.0
+    stepYMm = stepYUm / 1000.0
+    dieWidthMm = stepXMm / safeArrayX
+    dieHeightMm = stepYMm / safeArrayY
+    
+    maxLabelX = 0
+    maxLabelY = 0
+    for dieLeft, dieBottom, dieRight, dieTop in completeDies:
+        xIndex = int(round((dieLeft - minDieLeft) / dieWidthMm))
+        yIndex = int(round((dieBottom - minDieBottom) / dieHeightMm))
+        labelX = xIndex + 1
+        labelY = yIndex + 1
+        maxLabelX = max(maxLabelX, labelX)
+        maxLabelY = max(maxLabelY, labelY)
+    
+    # Check mismatch: compare KGDmap max with completeDies max
+    isMismatch = maxDieR != maxLabelY or maxDieC != maxLabelX
+    mismatchMessage = ""
+    if isMismatch:
+        mismatchMessage = f"MISMATCH: KGDmap has max dieR={maxDieR}, dieC={maxDieC} but completeDies has max labelY={maxLabelY}, labelX={maxLabelX}"
+
+    
+    # Overlay KGDmap values
+    for idx, row in kgdmapDf.iterrows():
+        dieR = int(row['dieR'])
+        dieC = int(row['dieC'])
+        value = row[selectedItemName]
+        
+        if pd.isna(value):
+            continue
+        
+        # Check bounds
+        if dieR < 1 or dieR > safeArrayY or dieC < 1 or dieC > safeArrayX:
+            continue
+        
+        # Find corresponding die in completeDies
+        dieLeft = minDieLeft + (dieC - 1) * dieWidthMm
+        dieBottom = minDieBottom + (dieR - 1) * dieHeightMm
+        dieRight = dieLeft + dieWidthMm
+        dieTop = dieBottom + dieHeightMm
+        
+        # Draw filled rectangle with color
+        color = cmap(norm(value))
+        rect = plt.Rectangle(
+            (dieLeft, dieBottom),
+            dieWidthMm,
+            dieHeightMm,
+            facecolor=color,
+            edgecolor='black',
+            linewidth=0.5,
+            alpha=0.7,
+            zorder=5
+        )
+        ax.add_patch(rect)
+        
+        # Add text label
+        centerX = (dieLeft + dieRight) / 2.0
+        centerY = (dieBottom + dieTop) / 2.0
+        ax.text(
+            centerX,
+            centerY,
+            f"{value:.1f}",
+            ha="center",
+            va="center",
+            fontsize=5,
+            color="black",
+            zorder=6,
+            bbox={"boxstyle": "round,pad=0.05", "fc": "white", "ec": "none", "alpha": 0.5},
+        )
+    
+    # Add colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = combinedFig.colorbar(sm, ax=ax, shrink=0.8, aspect=20)
+    cbar.set_label(selectedItemName, fontsize=8)
+    
+    return combinedFig, isMismatch, mismatchMessage
 
 
 def sanitize_file_stem(rawText: str) -> str:
@@ -80,6 +249,19 @@ def detect_csv_format(fileBytes: bytes, fileName: str) -> tuple[str, pd.DataFram
             # Read as KGDmap format
             # Skip first 10 rows (0-9), use row 11 (index 10) as header, read from row 12 (index 11)
             df = pd.read_csv(io.BytesIO(fileBytes), skiprows=10, header=0)
+            
+            # Add dieR and dieC columns
+            if 'chip_row' in df.columns and 'chip_column' in df.columns:
+                df = df.copy()
+                chip_row_numeric = pd.to_numeric(df['chip_row'], errors='coerce')
+                chip_col_numeric = pd.to_numeric(df['chip_column'], errors='coerce')
+                
+                min_row = chip_row_numeric.min()
+                min_col = chip_col_numeric.min()
+                
+                df['dieR'] = chip_row_numeric - min_row + 1
+                df['dieC'] = chip_col_numeric - min_col + 1
+            
             return "kgdmap", df
         
         # Otherwise try normal CSV format
@@ -390,75 +572,109 @@ excelFile: pd.ExcelFile | None = None
 sheetName = ""
 rawSheetDf = pd.DataFrame()
 hasParameterColumns = False
-kgdmapData: pd.DataFrame | None = None
+kgdmapFiles: dict[str, pd.DataFrame] = {}  # Store multiple KGDmap files
+kgdmapHeaders: dict[str, dict] = {}  # Store headers for each KGDmap file
+selectedKgdmapFile = ""  # Currently selected KGDmap file
+kgdmapData: pd.DataFrame | None = None  # Currently selected KGDmap data
 isKGDmapFormat = False
 
 with st.sidebar:
     st.header("輸入參數")
-    uploadedFile = st.file_uploader("上傳 Excel/CSV 檔", type=["xlsx", "xls", "csv"])
-    hasExcelData = uploadedFile is not None
+    uploadedFiles = st.file_uploader("上傳 Excel/CSV 檔", type=["xlsx", "xls", "csv"], accept_multiple_files=True)
+    hasExcelData = len(uploadedFiles) > 0
     
     if hasExcelData:
-        fileBytes = uploadedFile.getvalue()
-        fileName = Path(uploadedFile.name)
-        file_extension = fileName.suffix.lower()
+        # Process all uploaded files
+        kgdmapFiles.clear()
+        kgdmapHeaders.clear()
         
-        if file_extension == ".csv":
-            # Handle CSV file
-            try:
-                csv_format, csv_df = detect_csv_format(fileBytes, fileName.name)
-                
-                if csv_format == "kgdmap":
-                    # KGDmap format detected
-                    isKGDmapFormat = True
-                    kgdmapData = csv_df
-                    # Extract header information
-                    header_info = extract_kgdmap_header(fileBytes)
-                    st.session_state["kgdmapData"] = csv_df
-                    st.session_state["kgdmapHeader"] = header_info
-                    st.session_state["kgdmapFileName"] = fileName.name
-                    st.success(f"KGDmap 格式偵測成功: {fileName.name}")
-                    st.info("KGDmap 數據已準備就緒，將在 Special View tab 中顯示")
+        for uploadedFile in uploadedFiles:
+            fileBytes = uploadedFile.getvalue()
+            fileName = Path(uploadedFile.name)
+            file_extension = fileName.suffix.lower()
+            
+            if file_extension == ".csv":
+                # Handle CSV file
+                try:
+                    csv_format, csv_df = detect_csv_format(fileBytes, fileName.name)
                     
-                elif csv_format == "normal":
-                    # Normal CSV with x,y,value format
-                    rawSheetDf = csv_df
-                    sheetName = "CSV Data"
-                    parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
-                    parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:csv"
-                    if st.session_state.get("parameterSourceToken") != parameterSourceToken:
-                        st.session_state["parameterSourceToken"] = parameterSourceToken
-                        if parameterOverrides and apply_parameter_overrides(parameterOverrides):
-                            st.rerun()
-                else:
-                    st.error(f"無法識別 CSV 格式: {fileName.name}")
-                    st.stop()
-                    
-            except Exception as exc:
-                st.error(f"無法讀取 CSV 檔案: {exc}")
-                st.stop()
-        else:
-            # Handle Excel file (skip if KGDmap format)
-            if isKGDmapFormat:
-                pass  # Skip Excel processing for KGDmap format
+                    if csv_format == "kgdmap":
+                        # KGDmap format detected
+                        isKGDmapFormat = True
+                        # Extract header information for Lot-Wafer label
+                        header_info = extract_kgdmap_header(fileBytes)
+                        lot = header_info.get("Lot", "Unknown")
+                        wafer = header_info.get("Wafer", "Unknown")
+                        file_key = f"{lot} - {wafer}"
+                        
+                        kgdmapFiles[file_key] = csv_df
+                        kgdmapHeaders[file_key] = header_info
+                        
+                    elif csv_format == "normal":
+                        # Normal CSV with x,y,value format
+                        rawSheetDf = csv_df
+                        sheetName = "CSV Data"
+                        parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
+                        parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:csv"
+                        if st.session_state.get("parameterSourceToken") != parameterSourceToken:
+                            st.session_state["parameterSourceToken"] = parameterSourceToken
+                            if parameterOverrides and apply_parameter_overrides(parameterOverrides):
+                                st.rerun()
+                    else:
+                        st.error(f"無法識別 CSV 格式: {fileName.name}")
+                        
+                except Exception as exc:
+                    st.error(f"無法讀取 CSV 檔案 {fileName.name}: {exc}")
+                    continue
             else:
+                # Handle Excel file (skip if KGDmap format)
                 try:
                     excelFile = pd.ExcelFile(io.BytesIO(fileBytes))
                 except Exception as exc:
-                    st.error(f"無法讀取 Excel 檔案: {exc}")
-                    st.stop()
+                    st.error(f"無法讀取 Excel 檔案 {fileName.name}: {exc}")
+                    continue
                 sheetName = st.selectbox("選擇工作表", excelFile.sheet_names, key="sheetName")
                 try:
                     rawSheetDf = pd.read_excel(io.BytesIO(fileBytes), sheet_name=sheetName, header=None)
                 except Exception as exc:
-                    st.error(f"資料格式錯誤: {exc}")
-                    st.stop()
+                    st.error(f"資料格式錯誤 {fileName.name}: {exc}")
+                    continue
                 parameterOverrides, hasParameterColumns = parse_parameter_overrides(rawSheetDf)
                 parameterSourceToken = f"{fileName.name}:{len(fileBytes)}:{sheetName}"
                 if st.session_state.get("parameterSourceToken") != parameterSourceToken:
                     st.session_state["parameterSourceToken"] = parameterSourceToken
                     if parameterOverrides and apply_parameter_overrides(parameterOverrides):
                         st.rerun()
+        
+        # If we have KGDmap files, show file selector
+        if kgdmapFiles:
+            # File selection will be shown in the overlay section
+            # Set the currently selected KGDmap data to the first available file
+            first_file = list(kgdmapFiles.keys())[0]
+            kgdmapData = kgdmapFiles[first_file]
+            selectedKgdmapFile = first_file
+        else:
+            selectedKgdmapFile = ""
+            kgdmapData = None
+
+    # KGDmap file selector (if multiple files available)
+    if isKGDmapFormat and kgdmapFiles and len(kgdmapFiles) > 1:
+        st.subheader("KGDmap Files")
+        kgdmap_file_options = list(kgdmapFiles.keys())
+        default_selection = st.session_state.get("selectedKgdmapFile", kgdmap_file_options[0] if kgdmap_file_options else "")
+        if default_selection not in kgdmap_file_options:
+            default_selection = kgdmap_file_options[0] if kgdmap_file_options else ""
+        
+        selectedKgdmapFile = st.selectbox(
+            "Lot - Wafer",
+            kgdmap_file_options,
+            index=kgdmap_file_options.index(default_selection) if default_selection in kgdmap_file_options else 0,
+            key="selectedKgdmapFile"
+        )
+        
+        # Update the currently selected KGDmap data
+        if selectedKgdmapFile in kgdmapFiles:
+            kgdmapData = kgdmapFiles[selectedKgdmapFile]
 
     with st.container(border=True):
         st.caption("Frame Step / Frame Offset")
@@ -540,6 +756,7 @@ with st.sidebar:
                 "showContour": st.session_state.get("showContour", True),
                 "contourStyle": st.session_state.get("contourStyle", "filled"),
                 "showContourGrid": st.session_state.get("showContourGrid", False),
+                "showDieLabels": st.session_state.get("showDieLabels", False),
                 "showInfoPanel": st.session_state.get("showInfoPanel", False),
                 "frameLineColor": st.session_state.get("frameLineColor", "#f4a3a3"),
                 "dieLineColor": st.session_state.get("dieLineColor", "#ececec"),
@@ -583,7 +800,9 @@ with st.sidebar:
             key="contourStyle",
         )
         showContourGrid = st.checkbox("顯示 contour grid", value=False, key="showContourGrid")
+        showDieLabels = st.checkbox("顯示 die (R,C)", value=False, key="showDieLabels")
         showInfoPanel = st.checkbox("右側顯示參數資訊", value=False, key="showInfoPanel")
+        
         frameLineColor = st.color_picker("frame line color", value="#f4a3a3", key="frameLineColor")
         dieLineColor = st.color_picker("die line color", value="#ececec", key="dieLineColor")
         effectiveEdgeColor = st.color_picker("effective edge color", value="#f4a3a3", key="effectiveEdgeColor")
@@ -764,6 +983,7 @@ figure = render_figure(
     showContour=showContourEffective,
     contourStyle=contourStyle,
     showContourGrid=showContourGrid,
+    showDieLabels=showDieLabels,
     showInfoPanel=showInfoPanel,
     infoPanelText=infoPanelText,
     signatureText=f"by cnwang {version}",
@@ -783,7 +1003,7 @@ outputPath = Path.cwd() / f"{outputStem}.jpg"
 outputPath.write_bytes(jpgBytes)
 
 with st.container():
-    tab1, tab2 = st.tabs(["Wafer Map", "Special View"])
+    tab1, tab2, tab3 = st.tabs(["Wafer Map", "Special View", "combine"])
     
     with tab1:
         st.pyplot(figure, width="stretch")
@@ -826,5 +1046,56 @@ with st.container():
             render_kgdmap_viewer(kgdmapData)
         else:
             st.info("Special View tab - 上傳 KGDmap (CSV with Lot column) 或其他特殊格式檔案來顯示內容")
+    
+    with tab3:
+        if isKGDmapFormat and kgdmapData is not None:
+            st.subheader("Combined View: Wafer Map + KGDmap Overlay")
+            
+            # Item selector
+            availableItems = get_kgdmap_items(kgdmapData)
+            if availableItems:
+                selectedCombineItem = st.selectbox(
+                    "選擇要疊加的 Item",
+                    availableItems,
+                    help="選擇要在 wafermap 上疊加的 KGDmap 數據欄位",
+                    key="selectedCombineItem"
+                )
+                
+                # Create combined figure
+                combinedFig, isMismatch, mismatchMsg = create_combined_figure_with_kgdmap(
+                    originalFigure=figure,
+                    kgdmapDf=kgdmapData,
+                    selectedItemName=selectedCombineItem,
+                    arrayX=int(arrayX),
+                    arrayY=int(arrayY),
+                    stepXUm=stepXUm,
+                    stepYUm=stepYUm,
+                    frameOffsetXUm=frameOffsetXUm,
+                    frameOffsetYUm=frameOffsetYUm,
+                    topMm=topMm,
+                    waferOutline=waferOutline,
+                    effectiveOutline=effectiveOutline,
+                    topReferenceY=topReferenceY,
+                )
+                
+                # Display mismatch warning
+                if isMismatch:
+                    st.error(f"⚠️ MISMATCH: {mismatchMsg}")
+                
+                # Display the combined figure
+                st.pyplot(combinedFig, width="stretch")
+                
+                # Download button
+                combinedJpgBytes = figure_to_jpg_bytes(combinedFig)
+                st.download_button(
+                    label="下載 Combined JPG",
+                    data=combinedJpgBytes,
+                    file_name=f"{outputStem}_combined.jpg",
+                    mime="image/jpeg",
+                )
+            else:
+                st.info("無可用的 KGDmap items")
+        else:
+            st.info("combine tab - 請上傳 KGDmap 檔案並在 'Special View' 中選擇 item 來啟用合併功能")
 
 plt.close(figure)
