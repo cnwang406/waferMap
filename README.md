@@ -4,11 +4,12 @@ A Streamlit app for wafer data visualization and contour mapping from measuremen
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/release/python-3130/)
 [![Streamlit](https://img.shields.io/badge/streamlit-1.55-FF4B4B.svg)](https://streamlit.io/)
+[![Plotly](https://img.shields.io/badge/plotly-5.18-2D3E50.svg)](https://plotly.com/)
 [![Pandas](https://img.shields.io/badge/pandas-2.3-150458.svg)](https://pandas.pydata.org/)
 [![Matplotlib](https://img.shields.io/badge/matplotlib-3.10-11557c.svg)](https://matplotlib.org/)
 [![License MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-by cnwang, 2026/03
+by cnwang, 2026/04
 
 ## Features
 
