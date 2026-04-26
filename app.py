@@ -849,6 +849,14 @@ with st.sidebar:
 
     with st.container(border=True):
         st.caption("Save / Load Configuration")
+        
+        # Config filename input
+        config_filename = st.text_input(
+            "Config filename", 
+            value="wafer_config.json", 
+            help="Enter the filename for saving the configuration (include .json extension)"
+        )
+        
         if st.button("Save Config"):
             config_data = {
                 "stepXUm": st.session_state.get("stepXUm", 10000.0),
@@ -890,13 +898,14 @@ with st.sidebar:
                 ) if st.session_state.get("savedUploadFileBytes") is not None or st.session_state.get("loaded_config_file_bytes") is not None else "",
             }
             st.session_state["config_json"] = json.dumps(config_data, indent=2)
+            st.session_state["config_filename"] = config_filename
             st.success("Configuration prepared for download!")
         
         if "config_json" in st.session_state:
             st.download_button(
                 label="Download Config JSON",
                 data=st.session_state["config_json"],
-                file_name="wafer_config.json",
+                file_name=st.session_state.get("config_filename", "wafer_config.json"),
                 mime="application/json",
             )
         
