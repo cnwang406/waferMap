@@ -15,12 +15,15 @@ framework : streamlit, pandas, matplotlib, numpy
 
 import re
 import io
+import json
+import base64
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
-import json
+
+plt.rcParams["font.family"] = "Cascadia"
 from wafermap_core import (
     build_complete_frame_rectangles,
     build_complete_die_rectangles,
@@ -40,6 +43,15 @@ from wafermap_core import (
 from kgdmapviewer import render_kgdmap_viewer, get_kgdmap_items
 
 
+class PseudoUploadedFile:
+    def __init__(self, name: str, bytes_data: bytes):
+        self.name = name
+        self._bytes = bytes_data
+
+    def getvalue(self) -> bytes:
+        return self._bytes
+
+
 def create_combined_figure_with_kgdmap(
     originalFigure: plt.Figure,
     kgdmapDf: pd.DataFrame,
@@ -54,6 +66,8 @@ def create_combined_figure_with_kgdmap(
     waferOutline: object | None = None,
     effectiveOutline: object | None = None,
     topReferenceY: float = 0.0,
+    frameLineColor: str = "#f4a3a3",
+    dieLineColor: str = "#ececec",
 ) -> tuple[plt.Figure, bool, str]:
     """
     Create a combined figure overlaying KGDmap data on wafermap.
@@ -177,17 +191,30 @@ def create_combined_figure_with_kgdmap(
         
         # Draw filled rectangle with color
         color = cmap(norm(value))
-        rect = plt.Rectangle(
+        # Draw filled rectangle first
+        rect_fill = plt.Rectangle(
             (dieLeft, dieBottom),
             dieRight - dieLeft,
             dieTop - dieBottom,
             facecolor=color,
-            edgecolor='black',
-            linewidth=0.5,
-            alpha=0.7,
-            zorder=5
+            edgecolor="none",
+            linewidth=0,
+            alpha=0.65,
+            zorder=5,
         )
-        ax.add_patch(rect)
+        ax.add_patch(rect_fill)
+
+        # Draw border on top of the fill so the die line color is visible
+        rect_border = plt.Rectangle(
+            (dieLeft, dieBottom),
+            dieRight - dieLeft,
+            dieTop - dieBottom,
+            facecolor="none",
+            edgecolor=dieLineColor,
+            linewidth=0.8,
+            zorder=7,
+        )
+        ax.add_patch(rect_border)
         
         # Add text label
         centerX = (dieLeft + dieRight) / 2.0
@@ -200,7 +227,8 @@ def create_combined_figure_with_kgdmap(
             va="center",
             fontsize=6,
             color="black",
-            zorder=6,
+            fontfamily="Cascadia",
+            zorder=8,
             weight="bold",
             bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.6},
         )
@@ -283,7 +311,7 @@ def extract_kgdmap_header(fileBytes: bytes) -> dict:
     """
     Extract KGDmap header information from first 10 rows.
     """
-    header_info = {}
+    header_info: dict[str, str] = {}
     try:
         lines = fileBytes.decode('utf-8').split('\n')[:10]
         for line in lines:
@@ -295,7 +323,17 @@ def extract_kgdmap_header(fileBytes: bytes) -> dict:
                     header_info[key] = value
     except Exception:
         pass
-    return header_info
+
+    normalized = {k.strip().lower(): v for k, v in header_info.items()}
+    return {
+        "Lot": normalized.get("lot", "N/A"),
+        "Wafer": normalized.get("wafer", "N/A"),
+        "Product": normalized.get("product", "N/A"),
+        "Date": normalized.get("date", "N/A"),
+        "Time": normalized.get("time", "N/A"),
+        "TesterName": normalized.get("testername", "N/A"),
+        "ProgramName": normalized.get("programname", "N/A"),
+    }
 
 
 def parse_flat_value(rawValue: object) -> str | None:
@@ -569,6 +607,11 @@ for stateKey, defaultValue in defaultStateValues.items():
     if stateKey not in st.session_state:
         st.session_state[stateKey] = defaultValue
 
+if "pending_config_data" in st.session_state:
+    pending_config_data = st.session_state.pop("pending_config_data")
+    for key, value in pending_config_data.items():
+        st.session_state[key] = value
+
 uploadedFile = None
 hasExcelData = False
 fileBytes = b""
@@ -586,9 +629,21 @@ isKGDmapFormat = False
 with st.sidebar:
     st.header("輸入參數")
     uploadedFiles = st.file_uploader("上傳 Excel/CSV 檔", type=["xlsx", "xls", "csv"], accept_multiple_files=True)
+    if not uploadedFiles and st.session_state.get("loaded_config_file_bytes") is not None:
+        uploadedFiles = [
+            PseudoUploadedFile(
+                st.session_state.get("loaded_config_file_name", "loaded_data"),
+                st.session_state["loaded_config_file_bytes"],
+            )
+        ]
     hasExcelData = len(uploadedFiles) > 0
     
     if hasExcelData:
+        # Remember the current uploaded file for save/load config support
+        first_upload = uploadedFiles[0]
+        st.session_state["savedUploadFileName"] = getattr(first_upload, "name", "uploaded_data")
+        st.session_state["savedUploadFileBytes"] = first_upload.getvalue()
+
         # Process all uploaded files
         kgdmapFiles.clear()
         kgdmapHeaders.clear()
@@ -658,6 +713,7 @@ with st.sidebar:
             first_file = list(kgdmapFiles.keys())[0]
             kgdmapData = kgdmapFiles[first_file]
             selectedKgdmapFile = first_file
+            st.session_state["kgdmapHeader"] = kgdmapHeaders.get(first_file, {})
         else:
             selectedKgdmapFile = ""
             kgdmapData = None
@@ -680,6 +736,7 @@ with st.sidebar:
         # Update the currently selected KGDmap data
         if selectedKgdmapFile in kgdmapFiles:
             kgdmapData = kgdmapFiles[selectedKgdmapFile]
+            st.session_state["kgdmapHeader"] = kgdmapHeaders.get(selectedKgdmapFile, {})
 
     with st.container(border=True):
         st.caption("Frame Step / Frame Offset")
@@ -769,6 +826,14 @@ with st.sidebar:
                 "waferEdgeColor": st.session_state.get("waferEdgeColor", "#000000"),
                 "contourGridColor": st.session_state.get("contourGridColor", "#d9d9d9"),
                 "inputTitle": st.session_state.get("inputTitle", "wafer_frame_preview"),
+                "savedUploadFileName": st.session_state.get("savedUploadFileName", "") or st.session_state.get("loaded_config_file_name", ""),
+                "savedUploadFileBytes": (
+                    st.session_state.get("savedUploadFileBytes")
+                    if isinstance(st.session_state.get("savedUploadFileBytes"), str)
+                    else base64.b64encode(
+                        st.session_state.get("savedUploadFileBytes", st.session_state.get("loaded_config_file_bytes", b""))
+                    ).decode("ascii")
+                ) if st.session_state.get("savedUploadFileBytes") is not None or st.session_state.get("loaded_config_file_bytes") is not None else "",
             }
             st.session_state["config_json"] = json.dumps(config_data, indent=2)
             st.success("Configuration prepared for download!")
@@ -786,12 +851,15 @@ with st.sidebar:
             if st.button("Apply Config"):
                 try:
                     config_data = json.loads(uploaded_config.getvalue().decode("utf-8"))
-                    for key, value in config_data.items():
-                        st.session_state[key] = value
+                    # Preserve uploaded file content and name for reload
+                    if config_data.get("savedUploadFileBytes"):
+                        config_data["loaded_config_file_bytes"] = base64.b64decode(config_data["savedUploadFileBytes"])
+                        config_data["loaded_config_file_name"] = config_data.get("savedUploadFileName", "loaded_data")
+                    st.session_state["pending_config_data"] = config_data
                     if "config_json" in st.session_state:
                         del st.session_state["config_json"]
                     st.success("Configuration loaded successfully!")
-                    st.rerun()
+                    st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Failed to load config: {e}")
 
@@ -1084,6 +1152,8 @@ with st.container():
                     waferOutline=waferOutline,
                     effectiveOutline=effectiveOutline,
                     topReferenceY=topReferenceY,
+                    frameLineColor=frameLineColor,
+                    dieLineColor=dieLineColor,
                 )
                 
                 # Display mismatch warning

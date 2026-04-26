@@ -30,20 +30,25 @@ def parse_kgdmap_data(dataFrame: pd.DataFrame) -> tuple[dict, pd.DataFrame]:
 
 def get_kgdmap_items(dataDf: pd.DataFrame) -> list[str]:
     """
-    Get list of available items (columns) excluding chip_row and chip_column.
-    Prepend "(r,c)" for debug purposes.
+    Get list of available items from KGDmap columns after chip_column.
     """
     if dataDf.empty:
         return []
-    
-    items = ["(r,c)"]  # Debug option to show coordinates
-    exclude_cols = {"chip_row", "chip_column"}
-    
+
+    items: list[str] = []
+    found_chip_column = False
+    exclude_cols = {"chip_row", "chip_column", "dier", "diec", "dier", "diec"}
+
     for col in dataDf.columns:
         col_str = str(col).strip().lower()
-        if col_str not in exclude_cols:
-            items.append(str(col).strip())
-    
+        if not found_chip_column:
+            if col_str == "chip_column":
+                found_chip_column = True
+            continue
+        if col_str in exclude_cols:
+            continue
+        items.append(str(col).strip())
+
     return items
 
 
@@ -133,6 +138,7 @@ def create_kgdmap_figure(
     # Update layout
     fig.update_layout(
         title=f"KGDmap: {itemName}",
+        font=dict(family="Cascadia"),
         xaxis_title="Chip Column (1-indexed)",
         yaxis_title="Chip Row (1-indexed)",
         width=baseWidth,
