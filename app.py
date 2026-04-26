@@ -613,7 +613,49 @@ def build_info_panel_text(
 
 
 st.set_page_config(page_title=f"Wafer Data Viewer, by cnwang {version}", layout="wide")
-st.title("Wafer Data Viewer")
+
+# Create columns for title and about button
+title_col, about_col = st.columns([4, 1])
+
+with title_col:
+    st.title("Wafer Data Viewer")
+
+with about_col:
+    with st.popover("ℹ️ About"):
+        st.markdown("""
+        ### Wafer Data Viewer
+        
+        **Version:** 2.0  
+        **Author:** cnwang  
+        **Date:** 2026/03
+        
+        #### Features:
+        - **Wafer Map**: Standard wafer contour visualization
+        - **CP View**: KGDmap special view with interactive charts
+        - **Wafer+CP Overlay**: Combined wafer map with KGDmap data overlay
+        
+        #### Input Formats:
+        - Excel/CSV files with siteX, siteY, thickness columns
+        - KGDmap CSV format with Lot/Wafer headers
+        
+        #### Parameters:
+        - Frame step and offset settings
+        - Die array configuration
+        - Wafer geometry (diameter, flat)
+        - Laser mark positioning
+        - Color customization
+        
+        #### Output:
+        - Interactive wafer maps
+        - JPG export functionality
+        - Configurable parameter templates
+        
+        #### Framework:
+        - Streamlit web interface
+        - Pandas for data processing
+        - Matplotlib for visualization
+        - Plotly for interactive charts
+        """)
 
 # Apply Cascadia Code font to all sidebar elements including tabs
 st.markdown("""
@@ -698,8 +740,9 @@ kgdmapData: pd.DataFrame | None = None  # Currently selected KGDmap data
 isKGDmapFormat = False
 
 with st.sidebar:
-    st.header("輸入參數")
-    uploadedFiles = st.file_uploader("上傳 Excel/CSV 檔", type=["xlsx", "xls", "csv"], accept_multiple_files=True)
+    st.header("Parameters")
+    uploadedFiles = st.file_uploader("上傳 Excel/CSV 檔", type=["xlsx", "xls", "csv"], accept_multiple_files=True,
+                                     help="可以是 (x,y,value),(r,c,value),KGDmap 格式的 CSV，或是帶參數的 Excel 檔。")
     if not uploadedFiles and st.session_state.get("loaded_config_file_bytes") is not None:
         uploadedFiles = [
             PseudoUploadedFile(
@@ -826,7 +869,7 @@ with st.sidebar:
         topMm = st.number_input("top (mm)", min_value=0.0, step=0.1, key="topMm")
 
     with st.container(border=True):
-        st.caption("Site Offset")
+        st.caption("Site Offset",help="量測時可以真實反應量測點相對於 frame")
         offsetXUm = st.number_input(
             "offsetX from frame left-bottom (um)", step=10.0, key="offsetXUm"
         )
@@ -865,7 +908,28 @@ with st.sidebar:
         )
 
     with st.container(border=True):
-        st.caption("Save / Load Configuration")
+        st.caption("Display / Title", help="這裡的設定會影響主畫面顯示內容與樣式，但不會改變實際的 frame 參數。")
+        showContour = st.checkbox("顯示 contour", value=True, key="showContour")
+        contourStyle = st.selectbox(
+            "contour style",
+            ["filled", "lines", "filled + lines", "heatmap"],
+            index=0,
+            key="contourStyle",
+        )
+        showContourGrid = st.checkbox("顯示 contour grid", value=False, key="showContourGrid")
+        showDieLabels = st.checkbox("顯示 die (R,C)", value=False, key="showDieLabels")
+        showInfoPanel = st.checkbox("右側顯示參數資訊", value=False, key="showInfoPanel")
+        
+        frameLineColor = st.color_picker("frame line color", value="#f4a3a3", key="frameLineColor")
+        dieLineColor = st.color_picker("die line color", value="#ececec", key="dieLineColor")
+        effectiveEdgeColor = st.color_picker("effective edge color", value="#f4a3a3", key="effectiveEdgeColor")
+        waferEdgeColor = st.color_picker("wafer edge color", value="#000000", key="waferEdgeColor")
+        contourGridColor = st.color_picker("contour grid color", value="#d9d9d9", key="contourGridColor")
+        inputTitle = st.text_input("title", value="wafer_frame_preview", key="inputTitle")
+
+
+    with st.container(border=True):
+        st.caption("Save / Load Configuration",help="你可以將目前的參數設定與上傳的檔案資訊(整個 values 都會一起儲存)，之後再載入這個 JSON 來還原設定。")
         
         # Config filename input
         config_filename = st.text_input(
@@ -942,26 +1006,6 @@ with st.sidebar:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Failed to load config: {e}")
-
-    with st.container(border=True):
-        st.caption("Display / Title")
-        showContour = st.checkbox("顯示 contour", value=True, key="showContour")
-        contourStyle = st.selectbox(
-            "contour style",
-            ["filled", "lines", "filled + lines", "heatmap"],
-            index=0,
-            key="contourStyle",
-        )
-        showContourGrid = st.checkbox("顯示 contour grid", value=False, key="showContourGrid")
-        showDieLabels = st.checkbox("顯示 die (R,C)", value=False, key="showDieLabels")
-        showInfoPanel = st.checkbox("右側顯示參數資訊", value=False, key="showInfoPanel")
-        
-        frameLineColor = st.color_picker("frame line color", value="#f4a3a3", key="frameLineColor")
-        dieLineColor = st.color_picker("die line color", value="#ececec", key="dieLineColor")
-        effectiveEdgeColor = st.color_picker("effective edge color", value="#f4a3a3", key="effectiveEdgeColor")
-        waferEdgeColor = st.color_picker("wafer edge color", value="#000000", key="waferEdgeColor")
-        contourGridColor = st.color_picker("contour grid color", value="#d9d9d9", key="contourGridColor")
-        inputTitle = st.text_input("title", value="wafer_frame_preview", key="inputTitle")
 
 plotDf = pd.DataFrame(columns=["posXMm", "posYMm", "thickness"])
 calculatedDf = pd.DataFrame()
@@ -1205,7 +1249,7 @@ with st.container():
     
     with tab3:
         if isKGDmapFormat and kgdmapData is not None:
-            st.subheader("Combined View: Wafer Map + KGDmap Overlay")
+            st.subheader("Wafer Map + KGDmap Overlay")
             
             # Item selector
             availableItems = get_kgdmap_items(kgdmapData)
