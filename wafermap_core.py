@@ -625,6 +625,7 @@ def draw_dies(
     topMm: float,
     topReferenceY: float,
     lineColor: str,
+    showDieLabels: bool = False,
 ) -> None:
     completeDies = build_complete_die_rectangles(
         outline=outline,
@@ -661,6 +662,35 @@ def draw_dies(
             alpha=1.0,
             zorder=1.6,
         )
+
+    if completeDies and showDieLabels:
+        minDieLeft = min(die[0] for die in completeDies)
+        minDieBottom = min(die[1] for die in completeDies)
+        safeArrayX = max(int(arrayX), 1)
+        safeArrayY = max(int(arrayY), 1)
+        stepXMm = stepXUm / 1000.0
+        stepYMm = stepYUm / 1000.0
+        dieWidthMm = stepXMm / safeArrayX
+        dieHeightMm = stepYMm / safeArrayY
+
+        for dieLeft, dieBottom, dieRight, dieTop in completeDies:
+            xIndex = int(round((dieLeft - minDieLeft) / dieWidthMm))
+            yIndex = int(round((dieBottom - minDieBottom) / dieHeightMm))
+            labelX = xIndex + 1
+            labelY = yIndex + 1
+            centerX = (dieLeft + dieRight) / 2.0
+            centerY = (dieBottom + dieTop) / 2.0
+            ax.text(
+                centerX,
+                centerY,
+                f"{labelX},{labelY}",
+                ha="center",
+                va="center",
+                fontsize=6,
+                color="#333333",
+                zorder=6,
+                bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.65},
+            )
 
 
 def build_complete_rectangles(
@@ -853,6 +883,7 @@ def render_figure(
     contourStyle: str,
     showContourGrid: bool,
     showInfoPanel: bool,
+    showDieLabels: bool,
     infoPanelText: str,
     signatureText: str,
     frameLineColor: str,
@@ -959,6 +990,7 @@ def render_figure(
         topMm,
         topReferenceY,
         dieLineColor,
+        showDieLabels=showDieLabels,
     )
     draw_frames(
         ax,

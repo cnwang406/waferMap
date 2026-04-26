@@ -1,150 +1,299 @@
-# waferMap
+# Wafer Data Viewer
 
-A Streamlit app for plotting wafer thickness contour maps from Excel measurement data.
+A comprehensive Streamlit application for wafer data visualization, contour mapping, and KGDmap analysis.
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/release/python-3130/)
 [![Streamlit](https://img.shields.io/badge/streamlit-1.55-FF4B4B.svg)](https://streamlit.io/)
+[![Plotly](https://img.shields.io/badge/plotly-5.18-2D3E50.svg)](https://plotly.com/)
 [![Pandas](https://img.shields.io/badge/pandas-2.3-150458.svg)](https://pandas.pydata.org/)
 [![Matplotlib](https://img.shields.io/badge/matplotlib-3.10-11557c.svg)](https://matplotlib.org/)
 [![License MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-by cnwang, 2026/03
-
+**Version 2.0** | by cnwang, 2026/04
 
 ## Features
 
-- Excel upload is optional
-- No Excel: render wafer outline + frame-only preview
-- With Excel: render points and optional contour
-- Sidebar parameters are arranged in 5 boxed sections
-- Optional laser mark rectangle overlay with adjustable position, length, height, and edge distance
-- Input wafer map parameters: `stepX`, `stepY`, `array X`, `array Y`, `top`, `bottom`, `frame offset X`, `frame offset Y`, `offsetX`, `offsetY`, `wafer diameter`, `flat`, `edge exclude`
-- Laser mark parameters: `edge-to-mark_top`, `char-height`, `marker length`, `position`, `enable lasermark frame`
-- Convert site coordinates into absolute wafer coordinates
-- Draw wafer outline with `47.5 mm`, `57.5 mm`, `notch-180`, or `notch-135`
-- For flat wafers, the outer circular edge is clipped by the flat segment (no extra circle shown outside flat)
-- Draw an inner effective wafer boundary using `edge exclude` (light red line)
-- Draw frame lines (light red dashed) using `stepX`/`stepY` and frame offsets
-- Draw die grid lines (lighter gray) using die size `stepX/arrayX` and `stepY/arrayY`
-- Draw complete dies in regions between frame area and wafer edge when full die fits
-- Frame vertical placement starts from wafer top minus `top`, then arranged downward
-- Frame bottom gap constraint: frame lowest edge must keep at least `bottom` distance from wafer bottom
-- Show only complete rectangular frames fully inside wafer; partial frame segments are hidden
-- Toggle contour display
-- Contour interpolation and edge-exclude calculation run without SciPy dependency
-- Thickness colorbar and info panel layout are auto-adjusted to avoid overlap
-- Render measurement point labels when Excel data exists
-- Toggle contour grid display (hidden by default, light gray when shown)
-- Optional info panel on the right side of wafer chart
-- Info panel includes `total frames` (count of complete frames)
-- Info panel includes `total dies` (count of complete dies)
-- Info panel includes `edge exclude`, `top`, `bottom`, and `frame bottom gap` (mm)
-- Bottom-edge signature text: `by cnwang {VERSION}`
-- Title input supported; when Excel is uploaded, title automatically uses Excel filename
-- Export chart as `.jpg`
-- With Excel: output filename follows uploaded Excel base name
-- Without Excel: output filename is `wafer_frame_preview.jpg`
+### Core Functionality
+- **Excel/CSV Upload Support**: Optional data input with automatic format detection
+- **KGDmap Integration**: Support for KGDmap CSV format with Lot/Wafer headers
+- **Tabbed Interface**: Three main views - Wafer Map, CP View, and Wafer+CP Overlay
+- **Config Management**: Save/load configurations with customizable filenames
+- **About Dialog**: Comprehensive application information popup
+
+### Visualization Modes
+
+#### Wafer Map Tab
+- Standard wafer contour visualization with measurement data
+- Frame-only preview when no data is uploaded
+- Interactive contour plots with customizable styling
+- Optional die labels and grid overlays
+- Laser mark rectangle overlay with adjustable parameters
+
+#### CP View Tab (KGDmap Special View)
+- Interactive charts for KGDmap data analysis
+- Die-based visualization with proper aspect ratios
+- Multiple item selection and plotting
+- Plotly-powered interactive visualizations
+
+#### Wafer+CP Overlay Tab
+- Combined wafer map with KGDmap data overlay
+- Color-coded die values with borders
+- Mismatch detection between wafer layout and KGDmap data
+- Export combined visualizations as JPG
+
+### Parameters & Configuration
+- **Wafer Geometry**: Diameter, flat type (47.5mm, 57.5mm, notch-180, notch-135)
+- **Frame Layout**: Step sizes, array configuration, offsets
+- **Site Positioning**: Coordinate transformations and offsets
+- **Edge Processing**: Edge exclusion and effective boundary calculation
+- **Laser Marking**: Position, size, and orientation controls
+- **Color Customization**: Frame lines, die lines, wafer edges, contour colors
+- **Display Options**: Contour style, grid visibility, info panels
+
+### Input Data Formats
+
+#### Standard Excel/CSV Format
+| Column | Description | Unit |
+| --- | --- | --- |
+| `siteX` | Site X index | count |
+| `siteY` | Site Y index | count |
+| `thickness` | Measured thickness | Å |
+
+#### KGDmap CSV Format
+- Header rows (1-10): Lot, Wafer, Product, Date, Time, Tester info
+- Data rows (11+): chip_row, chip_column, and measurement columns
+- Automatic die coordinate conversion (dieR, dieC)
+
+### Output Features
+- Interactive Streamlit web interface
+- High-resolution JPG exports
+- Automatic filename generation
+- Download buttons for all generated images
+- Configurable parameter templates for Excel files
 
 ## Input Data (Optional)
 
-If you upload Excel, it must contain these columns:
+### Standard Format (Excel/CSV)
+Required columns for measurement data:
 
 | Column | Description | Unit |
 | --- | --- | --- |
 | `siteX` | Site X index | count |
 | `siteY` | Site Y index | count |
-| `thickness` | Measured thickness | A |
+| `thickness` | Measured thickness | Å |
+
+### KGDmap Format (CSV)
+- **Header Section** (rows 1-10): Metadata including Lot, Wafer, Product, Date, Time, Tester information
+- **Data Section** (rows 11+): chip_row, chip_column, and measurement columns
+- **Automatic Processing**: Converts chip coordinates to dieR/dieC format
+- **Multi-file Support**: Can upload multiple KGDmap files for batch processing
 
 ## Parameters
 
-| Parameter | Description | Unit |
+### Core Parameters
+| Parameter | Description | Unit | Default |
+| --- | --- | --- | --- |
+| `stepX` | Frame width | µm | 10000 |
+| `stepY` | Frame height | µm | 10000 |
+| `array X` | Dies per frame in X direction | count | 1 |
+| `array Y` | Dies per frame in Y direction | count | 1 |
+| `frame offset X` | Frame grid X offset | µm | 0 |
+| `frame offset Y` | Frame grid Y offset | µm | 0 |
+
+### Positioning Parameters
+| Parameter | Description | Unit | Default |
+| --- | --- | --- | --- |
+| `offsetX` | Site offset X from frame origin | µm | 0 |
+| `offsetY` | Site offset Y from frame origin | µm | 0 |
+| `top` | Frame placement from wafer top | mm | 10.0 |
+| `bottom` | Minimum frame-bottom gap | mm | 3.0 |
+
+### Wafer Geometry
+| Parameter | Description | Unit | Default |
+| --- | --- | --- | --- |
+| `wafer diameter` | Wafer diameter | mm | 150.0 |
+| `flat` | Edge type: `47.5 mm`, `57.5 mm`, `notch-180`, `notch-135` | - | `57.5 mm` |
+| `edge exclude` | Inward shrink from wafer edge | mm | 2.5 |
+
+### Laser Mark Parameters
+| Parameter | Description | Unit | Default |
+| --- | --- | --- | --- |
+| `enable lasermark frame` | Show/hide laser mark | - | false |
+| `edge-to-mark_top` | Distance from edge to mark | mm | 3.0 |
+| `char-height` | Mark rectangle height | mm | 1.3 |
+| `marker length` | Mark rectangle width | mm | 11.0 |
+| `position` | Clockwise angle from top | deg | 0 |
+
+### Display Parameters
+| Parameter | Description | Default |
 | --- | --- | --- |
-| `stepX` | Frame width | um |
-| `stepY` | Frame height | um |
-| `array X` | Number of dies per frame in X direction | count |
-| `array Y` | Number of dies per frame in Y direction | count |
-| `top` | Start frame placement from wafer top minus this value | mm |
-| `bottom` | Minimum allowed frame-bottom gap from wafer bottom (default `3.0`) | mm |
-| `frame offset X` | Frame grid X offset | um |
-| `frame offset Y` | Frame grid Y offset | um |
-| `offsetX` | Site offset X from frame lower-left origin | um |
-| `offsetY` | Site offset Y from frame lower-left origin | um |
-| `wafer diameter` | Wafer diameter | mm |
-| `flat` | Wafer edge type: `47.5 mm`, `57.5 mm`, `notch-180`, `notch-135` (default `57.5 mm`) | mm / type |
-| `edge exclude` | Inward shrink distance from original wafer edge (default `2.5`) | mm |
-| `show contour` | Show/hide contour (only effective when Excel is uploaded) | bool |
-| `show contour grid` | Show/hide contour grid (default hidden) | bool |
-| `show info panel` | Show/hide parameter summary text at chart right side | bool |
-| `enable lasermark frame` | Show/hide laser mark rectangle | bool |
-| `edge-to-mark_top` | Distance from wafer edge to the outer/top side of the laser mark | mm |
-| `char-height` | Laser mark rectangle height | mm |
-| `marker length` | Laser mark rectangle width/length | mm |
-| `position` | Clockwise angle from wafer top; rectangle rotates with this angle | deg |
-| `title` | Custom chart title (overridden by Excel filename when Excel is uploaded) | text |
+| `show contour` | Enable contour visualization | true |
+| `contour style` | filled / lines / filled+lines / heatmap | filled |
+| `show contour grid` | Display contour grid lines | false |
+| `show die labels` | Show die coordinate labels | false |
+| `show info panel` | Display parameter summary | false |
+| `title` | Custom chart title | wafer_frame_preview |
 
-Rules:
+### Color Customization
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `frame line color` | Frame boundary lines | #f4a3a3 |
+| `die line color` | Die grid lines | #ececec |
+| `effective edge color` | Inner boundary | #f4a3a3 |
+| `wafer edge color` | Outer boundary | #000000 |
+| `contour grid color` | Contour grid | #d9d9d9 |
 
-- `offsetX < stepX`
-- `offsetY < stepY`
-- default wafer diameter is `150 mm`
-- default `top` is `10 mm`
-- default `bottom` is `3 mm`
-- default `edge exclude` is `2.5 mm`
-- contour range, outside-wafer checks, and complete-frame checks are based on the effective (edge-excluded) wafer boundary
+## Coordinate System
 
-Position calculation:
-
-```text
-posX = siteX * stepX + offsetX
-posY = siteY * stepY + offsetY
+### Position Calculation
+```python
+# Convert site indices to absolute coordinates
+posX_mm = (siteX * stepX_um + offsetX_um) / 1000.0
+posY_mm = (siteY * stepY_um + offsetY_um) / 1000.0
 ```
 
-The app converts `posX` and `posY` from `um` to `mm` for plotting around wafer center `(0, 0)`.
+### Die Size Calculation
+```python
+dieWidth_um = stepX_um / arrayX
+dieHeight_um = stepY_um / arrayY
+```
+
+### KGDmap Coordinate Mapping
+- `chip_row` → `dieR` (1-based indexing)
+- `chip_column` → `dieC` (1-based indexing)
+- Automatic offset calculation from minimum values
 
 ## Installation
 
 ```bash
+# Clone or download the repository
+cd wafermap
+
+# Create virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Run
+## Usage
 
+### Running the Application
 ```bash
 streamlit run app.py
 ```
 
+### Basic Workflow
+1. **Configure Parameters**: Set wafer geometry, frame layout, and display options in the sidebar
+2. **Upload Data**: 
+   - Excel/CSV with siteX, siteY, thickness columns for standard visualization
+   - KGDmap CSV files for advanced analysis
+3. **Select View**: Choose between Wafer Map, CP View, or Combined Overlay tabs
+4. **Customize**: Adjust colors, labels, and display options
+5. **Export**: Download generated visualizations as JPG files
+6. **Save Config**: Export parameter settings for reuse
+
+### Configuration Management
+- **Save Config**: Export current settings to JSON with custom filename
+- **Load Config**: Import previously saved configurations
+- **Parameter Templates**: Auto-generate Excel templates with current parameters
+
 ## Output
 
-- Interactive Streamlit view of wafer frames (always)
-- Contour and thickness labels when Excel data is uploaded
-- Light red inner boundary shows effective wafer area after `edge exclude`
-- A `.jpg` file saved in the working directory
-- A download button in the Streamlit UI for the generated image
+### Visualization Types
+- **Wafer Map**: Standard contour plots with frame and die overlays
+- **CP View**: Interactive KGDmap analysis with Plotly charts
+- **Combined View**: Overlay of KGDmap data on wafer geometry
 
-## Files
+### Export Formats
+- High-resolution JPG images
+- Automatic filename generation based on input data
+- Download buttons for all generated visualizations
+- Config JSON files for parameter persistence
 
-- `app.py`: Streamlit UI
-- `wafermap_core.py`: calculation and plotting logic
-- `requirements.txt`: Python dependencies
+### Info Panel Features
+- Total frame and die counts
+- Edge exclusion and boundary measurements
+- Coordinate system information
+- Parameter summary with units
 
-## Notes
+## Project Structure
 
-- `thickness` uses unit `A`
-- `stepX`, `stepY`, `offsetX`, `offsetY`, `frame offset X`, `frame offset Y` use unit `um`
-- `array X` and `array Y` are unitless die counts per frame
-- `wafer diameter`, `top`, `edge exclude`, and flat size use unit `mm`
-- `notch-180` is drawn as an approximate V-notch at 180 degrees
-- `notch-135` is drawn as an approximate V-notch rotated to 135 degrees
-- laser mark frame uses the real wafer edge along the selected angle, so flat and notch edge types affect its placement
-- frame lines are light red dashed lines
-- die grid lines are lighter gray lines
-- die size is derived by `dieW = stepX / arrayX`, `dieH = stepY / arrayY`
-- complete dies can be drawn outside frame area if they still fully fit inside effective wafer boundary
-- only fully complete rectangular frames are drawn
-- `total frames` in info panel counts only complete rectangular frames
-- `total dies` in info panel counts only complete die rectangles
+```
+wafermap/
+├── app.py                 # Main Streamlit application
+├── wafermap_core.py       # Core calculation and plotting logic
+├── kgdmapviewer.py        # KGDmap visualization and processing
+├── requirements.txt       # Python dependencies
+├── README.md             # This documentation
+├── LICENSE               # MIT License
+└── test.txt              # Test data file
+```
+
+### Key Modules
+
+#### app.py
+- Streamlit web interface
+- Parameter management and validation
+- File upload and format detection
+- Tabbed visualization interface
+- Config save/load functionality
+
+#### wafermap_core.py
+- Wafer geometry calculations
+- Frame and die layout algorithms
+- Contour interpolation
+- Coordinate transformations
+
+#### kgdmapviewer.py
+- KGDmap data processing
+- Interactive chart generation
+- Die-based visualization
+- Overlay rendering logic
+
+## Technical Notes
+
+### Units and Conventions
+- **Thickness**: Å (Angstroms)
+- **Dimensions**: µm for precision, mm for display
+- **Coordinates**: Origin at wafer center (0,0)
+- **Angles**: Clockwise from top (0° = 12 o'clock position)
+
+### Wafer Edge Types
+- `47.5 mm` / `57.5 mm`: Standard flat edge wafers
+- `notch-180`: V-notch at bottom (180°)
+- `notch-135`: V-notch at 135° position
+
+### Rendering Optimizations
+- Contour interpolation without SciPy dependency
+- Automatic layout adjustment for colorbars and info panels
+- Efficient die and frame boundary calculations
+- Memory-optimized image generation
+
+### Compatibility
+- **Python**: 3.8+ (tested with 3.13)
+- **Streamlit**: 1.28+ (tested with 1.55)
+- **Plotly**: 5.18+ for interactive charts
+- **Matplotlib**: 3.10+ for static plots
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## License
+
+MIT License - see [LICENSE](./LICENSE) for details.
+
+---
+
+**Author**: cnwang  
+**Version**: 2.0  
+**Last Updated**: 2026/04
 - frame vertical placement starts from top and goes downward
 - `frame bottom gap` in info panel is the distance from arranged frame bottom edge to wafer bottom edge, and it will not be smaller than `bottom`
 - contour grid is optional and shown in light gray when enabled
