@@ -922,7 +922,7 @@ with st.sidebar:
                     if "config_json" in st.session_state:
                         del st.session_state["config_json"]
                     st.success("Configuration loaded successfully!")
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Failed to load config: {e}")
 
