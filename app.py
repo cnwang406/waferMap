@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 
-plt.rcParams["font.family"] = "Cascadia"
+plt.rcParams["font.family"] = "Cascadia Code"
 from wafermap_core import (
     build_complete_frame_rectangles,
     build_complete_die_rectangles,
@@ -63,6 +63,7 @@ def create_combined_figure_with_kgdmap(
     frameOffsetXUm: float = 0.0,
     frameOffsetYUm: float = 0.0,
     topMm: float = 10.0,
+    bottomMm: float = 0.0,
     waferOutline: object | None = None,
     effectiveOutline: object | None = None,
     topReferenceY: float = 0.0,
@@ -194,12 +195,12 @@ def create_combined_figure_with_kgdmap(
         # Draw filled rectangle first
         rect_fill = plt.Rectangle(
             (dieLeft, dieBottom),
-            dieRight - dieLeft,
-            dieTop - dieBottom,
+            dieRight - dieLeft ,
+            dieTop - dieBottom ,
             facecolor=color,
             edgecolor="none",
             linewidth=0,
-            alpha=0.65,
+            alpha=1.0,
             zorder=5,
         )
         ax.add_patch(rect_fill)
@@ -212,7 +213,7 @@ def create_combined_figure_with_kgdmap(
             facecolor="none",
             edgecolor=dieLineColor,
             linewidth=0.8,
-            zorder=7,
+            zorder=6,
         )
         ax.add_patch(rect_border)
         
@@ -227,12 +228,48 @@ def create_combined_figure_with_kgdmap(
             va="center",
             fontsize=6,
             color="black",
-            fontfamily="Cascadia",
-            zorder=8,
-            weight="bold",
-            bbox={"boxstyle": "round,pad=0.1", "fc": "white", "ec": "none", "alpha": 0.6},
+            fontfamily="Cascadia Code",
+            zorder=10,
+            weight="normal",
+            bbox={"boxstyle": "round,pad=0.1", "fc": color, "ec": "none", "alpha": 0.6},
         )
     
+    # Draw frame outlines after die overlay so frame lines appear on top
+    frameBottomReferenceY = float(waferOutline[:, 1].min())
+    completeFrames = build_complete_frame_rectangles(
+        outline=waferOutline,
+        stepXUm=stepXUm,
+        stepYUm=stepYUm,
+        frameOffsetXUm=frameOffsetXUm,
+        frameOffsetYUm=frameOffsetYUm,
+        topMm=topMm,
+        bottomMm=bottomMm,
+        topReferenceY=topReferenceY,
+        bottomReferenceY=frameBottomReferenceY,
+    )
+    frameEdges: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+    for xOrigin, yOrigin, xRight, yTop in completeFrames:
+        corners = [
+            (xOrigin, yOrigin),
+            (xRight, yOrigin),
+            (xRight, yTop),
+            (xOrigin, yTop),
+        ]
+        for index in range(4):
+            pointA = corners[index]
+            pointB = corners[(index + 1) % 4]
+            frameEdges.add((pointA, pointB) if pointA <= pointB else (pointB, pointA))
+    for pointA, pointB in sorted(frameEdges):
+        ax.plot(
+            [pointA[0], pointB[0]],
+            [pointA[1], pointB[1]],
+            color=frameLineColor,
+            linewidth=0.9,
+            linestyle=(0, (4, 4)),
+            alpha=0.9,
+            zorder=9,
+        )
+
     # Add colorbar
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
@@ -578,6 +615,23 @@ def build_info_panel_text(
 st.set_page_config(page_title=f"Wafer Data Viewer, by cnwang {version}", layout="wide")
 st.title("Wafer Data Viewer")
 
+# Apply Cascadia Code font to all sidebar elements including tabs
+st.markdown("""
+<style>
+    [data-testid="stSidebar"] * {
+        font-family: 'Cascadia Code', monospace !important;
+    }
+    [data-testid="stSidebar"] .stTabs [data-baseweb="tab"] {
+        font-family: 'Cascadia Code', monospace !important;
+    }
+    [data-testid="stSidebar"] .stTabs [data-baseweb="tab-list"] {
+        font-family: 'Cascadia Code', monospace !important;
+    }
+    [data-testid="stSidebar"] .stTabs [data-baseweb="tab-panel"] {
+        font-family: 'Cascadia Code', monospace !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 st.caption(
     f"by cnwang 2026/03.  v{version}"
@@ -1076,7 +1130,7 @@ outputPath = Path.cwd() / f"{outputStem}.jpg"
 outputPath.write_bytes(jpgBytes)
 
 with st.container():
-    tab1, tab2, tab3 = st.tabs(["Wafer Map", "Special View", "combine"])
+    tab1, tab2, tab3 = st.tabs(["Wafer Map", "CP View", "Wafer+CP Overlay"])
     
     with tab1:
         st.pyplot(figure, width="stretch")
@@ -1149,6 +1203,7 @@ with st.container():
                     frameOffsetXUm=frameOffsetXUm,
                     frameOffsetYUm=frameOffsetYUm,
                     topMm=topMm,
+                    bottomMm=bottomMm,
                     waferOutline=waferOutline,
                     effectiveOutline=effectiveOutline,
                     topReferenceY=topReferenceY,
